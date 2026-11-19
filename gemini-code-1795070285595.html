@@ -1,0 +1,1570 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Cajon & Kit Studio XR — Rhythm & Percussion Trainer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link type="text/css" rel="stylesheet" href="https://xrblocks.github.io/css/xr.css" />
+    <script>window.litDisableBundleWarning = true;</script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+        "three/": "https://cdn.jsdelivr.net/npm/three@0.184.0/",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
+        "@pmndrs/uikit": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit@1.0.64/dist/index.min.js",
+        "@pmndrs/uikit-pub-sub": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit-pub-sub@1.0.64/dist/index.min.js",
+        "@pmndrs/msdfonts": "https://cdn.jsdelivr.net/npm/@pmndrs/msdfonts@1.0.64/dist/index.min.js",
+        "@preact/signals-core": "https://cdn.jsdelivr.net/npm/@preact/signals-core@1.14.0/dist/signals-core.mjs",
+        "yoga-layout/load": "https://cdn.jsdelivr.net/npm/yoga-layout@3.2.1/dist/src/load.js",
+        "lit": "https://esm.sh/lit@3.3.1",
+        "lit/": "https://esm.sh/lit@3.3.1/",
+        "xrblocks": "https://cdn.jsdelivr.net/npm/xrblocks@0.21.1/build/xrblocks.js",
+        "xrblocks/addons/": "https://cdn.jsdelivr.net/npm/xrblocks@0.21.1/build/addons/"
+      }
+    }
+    </script>
+    <style>
+      body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #070b14;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import * as xb from 'xrblocks';
+
+      // --- 1. DRUM KIT <-> CAJON VOICE DEFINITIONS ---
+      const DRUM_VOICES = [
+        {
+          id: 0,
+          kitName: 'KICK',
+          cajonZone: 'PALM BASS',
+          cajonDetail: 'Center-Low Tapa (Flat Palm)',
+          keyHint: 'D',
+          colorHex: '#f97316',
+          colorInt: 0xf97316,
+          darkHex: '#431407'
+        },
+        {
+          id: 1,
+          kitName: 'SNARE',
+          cajonZone: 'CORNER SLAP',
+          cajonDetail: 'Top Corner Edge (Loose Fingers)',
+          keyHint: 'F',
+          colorHex: '#38bdf8',
+          colorInt: 0x38bdf8,
+          darkHex: '#082f49'
+        },
+        {
+          id: 2,
+          kitName: 'HI-HAT',
+          cajonZone: 'FINGER TIP',
+          cajonDetail: 'Upper-Mid Tapa (Light Ghost Tap)',
+          keyHint: 'J',
+          colorHex: '#10b981',
+          colorInt: 0x10b981,
+          darkHex: '#022c22'
+        },
+        {
+          id: 3,
+          kitName: 'TOM / RIM',
+          cajonZone: 'OPEN TONE',
+          cajonDetail: 'Top Center Rim (Open Pads)',
+          keyHint: 'K',
+          colorHex: '#a855f7',
+          colorInt: 0xa855f7,
+          darkHex: '#2e1065'
+        }
+      ];
+
+      // --- 2. AUTHENTIC CAJON-TO-DRUM-KIT GROOVE LIBRARY (16th-note grid per bar) ---
+      const GROOVE_LIBRARY = [
+        {
+          name: '1. Acoustic Rock Backbeat',
+          bpm: 92,
+          duration: 45,
+          isFreeJam: false,
+          tip: 'BASS = Low-center palm on 1 & 3 | SLAP = Crisp top-corner snare on 2 & 4.',
+          // Each step is 1/16th note (0..15)
+          pattern: [
+            { step: 0, lanes: [0, 2] },
+            { step: 2, lanes: [2] },
+            { step: 4, lanes: [1, 2] },
+            { step: 6, lanes: [2] },
+            { step: 8, lanes: [0, 2] },
+            { step: 10, lanes: [0] },
+            { step: 12, lanes: [1, 2] },
+            { step: 14, lanes: [2] }
+          ]
+        },
+        {
+          name: '2. Rumba Flamenca Cajon',
+          bpm: 104,
+          duration: 45,
+          isFreeJam: false,
+          tip: 'Classic Rumba: Syncopated Palm Bass (1, &2, 4) paired with sharp Corner Slap on 3.',
+          pattern: [
+            { step: 0, lanes: [0] },
+            { step: 2, lanes: [2] },
+            { step: 3, lanes: [1] },
+            { step: 4, lanes: [2] },
+            { step: 6, lanes: [0] },
+            { step: 8, lanes: [1] },
+            { step: 10, lanes: [2] },
+            { step: 12, lanes: [0] },
+            { step: 14, lanes: [3] }
+          ]
+        },
+        {
+          name: '3. Ghost-Note Funk Pocket',
+          bpm: 94,
+          duration: 45,
+          isFreeJam: false,
+          tip: 'Keep Finger-Tip ghost notes feather-light between heavy Palm Bass & Corner Slaps.',
+          pattern: [
+            { step: 0, lanes: [0, 2] },
+            { step: 2, lanes: [2] },
+            { step: 3, lanes: [0] },
+            { step: 4, lanes: [1] },
+            { step: 6, lanes: [2] },
+            { step: 7, lanes: [2] },
+            { step: 8, lanes: [0] },
+            { step: 10, lanes: [0, 2] },
+            { step: 12, lanes: [1] },
+            { step: 14, lanes: [3] },
+            { step: 15, lanes: [2] }
+          ]
+        },
+        {
+          name: '4. Bossa & Latin Clave',
+          bpm: 112,
+          duration: 45,
+          isFreeJam: false,
+          tip: 'Anticipate the 3rd beat with Palm Bass while Top-Rim Open Tones outline the clave.',
+          pattern: [
+            { step: 0, lanes: [0, 3] },
+            { step: 2, lanes: [2] },
+            { step: 3, lanes: [3] },
+            { step: 4, lanes: [2] },
+            { step: 6, lanes: [0, 3] },
+            { step: 8, lanes: [0] },
+            { step: 10, lanes: [1] },
+            { step: 12, lanes: [2] },
+            { step: 13, lanes: [3] },
+            { step: 14, lanes: [0] }
+          ]
+        },
+        {
+          name: '5. Modern Acoustic Hip-Hop',
+          bpm: 86,
+          duration: 45,
+          isFreeJam: false,
+          tip: 'Deep double Palm-Bass kicks + snappy Corner Slap backbeats for unplugged sets.',
+          pattern: [
+            { step: 0, lanes: [0, 2] },
+            { step: 2, lanes: [2] },
+            { step: 3, lanes: [0] },
+            { step: 4, lanes: [1, 2] },
+            { step: 6, lanes: [2] },
+            { step: 8, lanes: [2] },
+            { step: 9, lanes: [0] },
+            { step: 10, lanes: [0, 2] },
+            { step: 12, lanes: [1, 2] },
+            { step: 14, lanes: [3] }
+          ]
+        },
+        {
+          name: '6. Free Jam Studio (No Timer)',
+          bpm: 96,
+          duration: 0,
+          isFreeJam: true,
+          tip: 'Free Practice: Strike pads (D/F/J/K, Tap, or VR Trigger) to hear Kit + Cajon tones!',
+          pattern: []
+        }
+      ];
+
+      // --- 3. STUDIO PERCUSSION WEB AUDIO SYNTHESIZER ---
+      class PercussionAudio {
+        constructor() {
+          this.ctx = null;
+          this.noiseBuffer = null;
+        }
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+            // Pre-generate 1s white noise buffer for snare wires & hi-hats
+            const len = this.ctx.sampleRate;
+            this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+            const data = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < len; i++) {
+              data[i] = Math.random() * 2 - 1;
+            }
+          }
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        }
+
+        playDrum(laneIndex, velocity = 1.0) {
+          try {
+            this.ensureContext();
+            if (laneIndex === 0) this.playBassKick(velocity);
+            else if (laneIndex === 1) this.playSnareSlap(velocity);
+            else if (laneIndex === 2) this.playHiHatTip(velocity);
+            else this.playOpenTomRim(velocity);
+          } catch (_) {}
+        }
+
+        // Lane 0: Kick Drum + Cajon Center Palm Bass
+        playBassKick(vel = 1.0) {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(148, now);
+          osc.frequency.exponentialRampToValueAtTime(44, now + 0.16);
+
+          gain.gain.setValueAtTime(0.68 * vel, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.29);
+
+          // Wooden tapa attack transient
+          const clickOsc = this.ctx.createOscillator();
+          const clickGain = this.ctx.createGain();
+          clickOsc.type = 'triangle';
+          clickOsc.frequency.setValueAtTime(240, now);
+          clickOsc.frequency.exponentialRampToValueAtTime(75, now + 0.045);
+          clickGain.gain.setValueAtTime(0.28 * vel, now);
+          clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+          clickOsc.connect(clickGain);
+          clickGain.connect(this.ctx.destination);
+          clickOsc.start(now);
+          clickOsc.stop(now + 0.055);
+        }
+
+        // Lane 1: Snare Drum + Cajon Top-Corner Slap
+        playSnareSlap(vel = 1.0) {
+          const now = this.ctx.currentTime;
+
+          // Snare wires / wood slap crack
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = this.noiseBuffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(2200, now);
+          filter.Q.setValueAtTime(0.9, now);
+
+          const nGain = this.ctx.createGain();
+          nGain.gain.setValueAtTime(0.45 * vel, now);
+          nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+
+          noise.connect(filter);
+          filter.connect(nGain);
+          nGain.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + 0.18);
+
+          // Snare shell / corner wood pop
+          const body = this.ctx.createOscillator();
+          const bGain = this.ctx.createGain();
+          body.type = 'triangle';
+          body.frequency.setValueAtTime(225, now);
+          body.frequency.exponentialRampToValueAtTime(118, now + 0.09);
+          bGain.gain.setValueAtTime(0.36 * vel, now);
+          bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+          body.connect(bGain);
+          bGain.connect(this.ctx.destination);
+          body.start(now);
+          body.stop(now + 0.12);
+        }
+
+        // Lane 2: Closed Hi-Hat + Cajon Finger-Tip Ghost Tap
+        playHiHatTip(vel = 1.0) {
+          const now = this.ctx.currentTime;
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = this.noiseBuffer;
+
+          const hp = this.ctx.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.setValueAtTime(6200, now);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.24 * vel, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+
+          noise.connect(hp);
+          hp.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + 0.06);
+
+          // Subtle wooden finger-tip tap resonance
+          const tap = this.ctx.createOscillator();
+          const tGain = this.ctx.createGain();
+          tap.type = 'sine';
+          tap.frequency.setValueAtTime(780, now);
+          tap.frequency.exponentialRampToValueAtTime(340, now + 0.025);
+          tGain.gain.setValueAtTime(0.11 * vel, now);
+          tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+          tap.connect(tGain);
+          tGain.connect(this.ctx.destination);
+          tap.start(now);
+          tap.stop(now + 0.035);
+        }
+
+        // Lane 3: High Tom + Cajon Open Top-Rim Tone
+        playOpenTomRim(vel = 1.0) {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(325, now);
+          osc.frequency.exponentialRampToValueAtTime(178, now + 0.19);
+
+          gain.gain.setValueAtTime(0.42 * vel, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.25);
+
+          const overtone = this.ctx.createOscillator();
+          const oGain = this.ctx.createGain();
+          overtone.type = 'triangle';
+          overtone.frequency.setValueAtTime(510, now);
+          overtone.frequency.exponentialRampToValueAtTime(290, now + 0.09);
+          oGain.gain.setValueAtTime(0.16 * vel, now);
+          oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          overtone.connect(oGain);
+          oGain.connect(this.ctx.destination);
+          overtone.start(now);
+          overtone.stop(now + 0.11);
+        }
+
+        playMetronome(isDownbeat = false) {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(isDownbeat ? 1280 : 880, now);
+            gain.gain.setValueAtTime(isDownbeat ? 0.10 : 0.055, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.04);
+          } catch (_) {}
+        }
+
+        playMissThud() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(115, now);
+            osc.frequency.linearRampToValueAtTime(68, now + 0.14);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.16);
+          } catch (_) {}
+        }
+
+        playSessionComplete() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            [523.25, 659.25, 783.99, 987.77, 1174.66].forEach((freq, idx) => {
+              const osc = this.ctx.createOscillator();
+              const gain = this.ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+              gain.gain.setValueAtTime(0.16, now + idx * 0.06);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.35);
+              osc.connect(gain);
+              gain.connect(this.ctx.destination);
+              osc.start(now + idx * 0.06);
+              osc.stop(now + idx * 0.06 + 0.38);
+            });
+          } catch (_) {}
+        }
+      }
+
+      // --- 4. ZERO-ALLOCATION STUDIO PARTICLE POOL ---
+      class ParticleFX {
+        constructor(scene) {
+          this.scene = scene;
+          this.particles = [];
+          const geo = new THREE.SphereGeometry(0.018, 8, 8);
+          this.laneMats = DRUM_VOICES.map(
+            v => new THREE.MeshBasicMaterial({ color: v.colorInt, transparent: true, opacity: 0.95 })
+          );
+          this.goldMat = new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.95 });
+          this.missMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.8 });
+
+          for (let i = 0; i < 120; i++) {
+            const mesh = new THREE.Mesh(geo, this.goldMat);
+            mesh.visible = false;
+            mesh.xb = { pointerEvents: 'none' }; // CRITICAL: Never block rays
+            this.scene.add(mesh);
+            this.particles.push({ mesh, vel: new THREE.Vector3(), life: 0, maxLife: 1 });
+          }
+        }
+
+        spawnHitBurst(pos, laneIdx, isPerfect = true) {
+          const count = isPerfect ? 20 : 12;
+          for (let i = 0; i < count; i++) {
+            const p = this.particles.find(item => !item.mesh.visible);
+            if (!p) break;
+            p.mesh.material = isPerfect && i % 2 === 0 ? this.goldMat : this.laneMats[laneIdx];
+            p.mesh.scale.setScalar(0.8 + Math.random() * 0.9);
+            p.mesh.position.copy(pos);
+            const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+            const speed = (isPerfect ? 1.4 : 0.9) + Math.random() * 1.1;
+            p.vel.set(Math.cos(angle) * speed, 0.7 + Math.random() * 1.3, Math.sin(angle) * speed * 0.6);
+            p.life = 0;
+            p.maxLife = isPerfect ? 0.42 : 0.30;
+            p.mesh.visible = true;
+          }
+        }
+
+        spawnMissSpark(pos) {
+          for (let i = 0; i < 10; i++) {
+            const p = this.particles.find(item => !item.mesh.visible);
+            if (!p) break;
+            p.mesh.material = this.missMat;
+            p.mesh.scale.setScalar(0.75);
+            p.mesh.position.copy(pos);
+            p.vel.set((Math.random() - 0.5) * 1.2, 0.2 + Math.random() * 0.5, (Math.random() - 0.5) * 0.8);
+            p.life = 0;
+            p.maxLife = 0.28;
+            p.mesh.visible = true;
+          }
+        }
+
+        update(dt) {
+          for (const p of this.particles) {
+            if (!p.mesh.visible) continue;
+            p.life += dt;
+            if (p.life >= p.maxLife) {
+              p.mesh.visible = false;
+              continue;
+            }
+            p.vel.y -= 3.2 * dt; // Subtle studio gravity
+            p.mesh.position.addScaledVector(p.vel, dt);
+            p.mesh.scale.multiplyScalar(0.95);
+          }
+        }
+
+        dispose() {
+          for (const p of this.particles) {
+            this.scene.remove(p.mesh);
+            p.mesh.geometry.dispose();
+          }
+          this.laneMats.forEach(m => m.dispose());
+          this.goldMat.dispose();
+          this.missMat.dispose();
+        }
+      }
+
+      // --- 5. DYNAMIC CANVAS TEXTURES FOR DRUM PADS & CAJON TAPA ---
+      function createDrumPadTexture(voice, isActive = false) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = isActive ? voice.colorHex : '#0f172a';
+        ctx.beginPath();
+        ctx.roundRect(14, 14, 484, 484, 64);
+        ctx.fill();
+
+        // Inner drumhead ring
+        ctx.lineWidth = isActive ? 22 : 14;
+        ctx.strokeStyle = isActive ? '#ffffff' : voice.colorHex;
+        ctx.beginPath();
+        ctx.roundRect(26, 26, 460, 460, 56);
+        ctx.stroke();
+
+        // Top badge: Keybind
+        ctx.fillStyle = isActive ? 'rgba(15,23,42,0.85)' : voice.darkHex;
+        ctx.beginPath();
+        ctx.roundRect(176, 48, 160, 54, 16);
+        ctx.fill();
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 30px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`KEY [${voice.keyHint}]`, 256, 75);
+
+        // Drum Kit Voice Title
+        ctx.fillStyle = isActive ? '#090d16' : '#ffffff';
+        ctx.font = '900 62px sans-serif';
+        ctx.fillText(voice.kitName, 256, 205);
+
+        // Divider line
+        ctx.strokeStyle = isActive ? 'rgba(9,13,22,0.35)' : 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(80, 265);
+        ctx.lineTo(432, 265);
+        ctx.stroke();
+
+        // Cajon Transfer Label
+        ctx.fillStyle = isActive ? '#090d16' : voice.colorHex;
+        ctx.font = 'bold 34px sans-serif';
+        ctx.fillText('CAJON TRANSFER', 256, 315);
+
+        ctx.fillStyle = isActive ? '#0f172a' : '#e2e8f0';
+        ctx.font = 'bold 42px sans-serif';
+        ctx.fillText(voice.cajonZone, 256, 375);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+      }
+
+      function createCajonTapaTexture(activeLane = -1) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 768;
+        const ctx = canvas.getContext('2d');
+
+        // Warm birchwood front plate (tapa) gradient
+        const woodGrad = ctx.createLinearGradient(0, 0, 512, 768);
+        woodGrad.addColorStop(0, '#d97706');
+        woodGrad.addColorStop(0.5, '#b45309');
+        woodGrad.addColorStop(1, '#78350f');
+        ctx.fillStyle = woodGrad;
+        ctx.fillRect(0, 0, 512, 768);
+
+        // Subtle wood grain lines
+        ctx.strokeStyle = 'rgba(69, 26, 3, 0.22)';
+        ctx.lineWidth = 3;
+        for (let x = 18; x < 512; x += 24) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.bezierCurveTo(x + 8, 250, x - 8, 500, x, 768);
+          ctx.stroke();
+        }
+
+        // Outer mahogany frame border
+        ctx.strokeStyle = '#451a03';
+        ctx.lineWidth = 24;
+        ctx.strokeRect(12, 12, 488, 744);
+
+        // Header label
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.beginPath();
+        ctx.roundRect(46, 28, 420, 52, 14);
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 26px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('CAJON TAPA STRIKE MAP', 256, 54);
+
+        // Zone 3: Top Center Rim (Open Tom / Rim - Violet #a855f7)
+        const z3Active = activeLane === 3;
+        ctx.fillStyle = z3Active ? '#a855f7' : 'rgba(168, 85, 247, 0.32)';
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = z3Active ? 8 : 4;
+        ctx.beginPath();
+        ctx.roundRect(156, 96, 200, 74, 18);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillText('RIM / TOM', 256, 133);
+
+        // Zone 1: Top-Left & Top-Right Corners (Corner Slap / Snare - Cyan #38bdf8)
+        const z1Active = activeLane === 1;
+        ctx.fillStyle = z1Active ? '#38bdf8' : 'rgba(56, 189, 248, 0.34)';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = z1Active ? 8 : 4;
+        // Left corner
+        ctx.beginPath();
+        ctx.roundRect(36, 108, 106, 135, 20);
+        ctx.fill();
+        ctx.stroke();
+        // Right corner
+        ctx.beginPath();
+        ctx.roundRect(370, 108, 106, 135, 20);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = z1Active ? '#090d16' : '#ffffff';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText('SLAP', 89, 165);
+        ctx.fillText('SNARE', 89, 192);
+        ctx.fillText('SLAP', 423, 165);
+        ctx.fillText('SNARE', 423, 192);
+
+        // Zone 2: Upper-Middle Finger Tip Zone (Hi-Hat - Emerald #10b981)
+        const z2Active = activeLane === 2;
+        ctx.fillStyle = z2Active ? '#10b981' : 'rgba(16, 185, 129, 0.32)';
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = z2Active ? 8 : 4;
+        ctx.beginPath();
+        ctx.roundRect(126, 200, 260, 110, 24);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = z2Active ? '#090d16' : '#ffffff';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('FINGER TIP (HI-HAT)', 256, 255);
+
+        // Zone 0: Center-Lower Palm Bass Circle (Kick - Orange #f97316)
+        const z0Active = activeLane === 0;
+        ctx.fillStyle = z0Active ? '#f97316' : 'rgba(249, 115, 22, 0.38)';
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = z0Active ? 10 : 5;
+        ctx.beginPath();
+        ctx.arc(256, 495, 138, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = z0Active ? '#090d16' : '#ffffff';
+        ctx.font = 'bold 30px sans-serif';
+        ctx.fillText('PALM BASS', 256, 480);
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('(KICK DRUM)', 256, 518);
+
+        // Footer brand stamp
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+        ctx.beginPath();
+        ctx.roundRect(76, 680, 360, 48, 12);
+        ctx.fill();
+        ctx.fillStyle = '#fde68a';
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillText('BIRCH TAPA • SNARE WIRES', 256, 704);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+      }
+
+      // --- 6. MAIN RHYTHM & CAJON TRAINER SCRIPT ---
+      class CajonKitStudioScript extends xb.Script {
+        constructor() {
+          super();
+          this.score = 0;
+          this.combo = 0;
+          this.maxCombo = 0;
+          this.hitsCount = 0;
+          this.totalNotesJudged = 0;
+
+          this.grooveIndex = 0;
+          this.tempoMultipliers = [0.8, 1.0, 1.15];
+          this.tempoIdx = 1; // 1.0x default
+
+          this.isPlaying = false;
+          this.songTime = 0;
+          this.timeLeft = 45.0;
+          this.lastQuarterBeat = -1;
+
+          // Note scheduling & active notes
+          this.scheduledNotes = [];
+          this.activeNotes = [];
+          this.notePool = [];
+          this.noteGeo = new THREE.BoxGeometry(0.24, 0.055, 0.11);
+
+          // 3D Stage & Pads
+          this.pads = [];
+          this.hitTargets = [];
+          this.padTexturesNormal = [];
+          this.padTexturesActive = [];
+          this.padFlashTimers = [0, 0, 0, 0];
+
+          // Cajon 3D Visualizer
+          this.cajonMesh = null;
+          this.cajonTapaMat = null;
+          this.cajonActiveTimer = 0;
+          this.cajonActiveLane = -1;
+
+          // Raycasting & Input
+          this.raycaster = new THREE.Raycaster();
+          this.pointer = new THREE.Vector2();
+          this.tempMatrix = new THREE.Matrix4();
+          this.rayOrigin = new THREE.Vector3();
+          this.rayDirection = new THREE.Vector3();
+          this.vrStrikeCooldowns = [0, 0];
+
+          this.boundPointerDown = (e) => this.onScreenPointerDown(e);
+          this.boundKeyDown = (e) => this.onKeyDown(e);
+        }
+
+        init() {
+          this.sfx = new PercussionAudio();
+          this.fx = new ParticleFX(this);
+
+          // Studio Lighting
+          this.add(new THREE.HemisphereLight(0xf8fafc, 0x0f172a, 2.2));
+          const keyLight = new THREE.DirectionalLight(0xfffbeb, 2.0);
+          keyLight.position.set(1.5, 4.0, 2.0);
+          this.add(keyLight);
+
+          const rimLight = new THREE.PointLight(0x38bdf8, 1.8, 6);
+          rimLight.position.set(-1.5, 2.0, -1.2);
+          this.add(rimLight);
+
+          // Studio Floor (pointerEvents: 'none')
+          const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(14, 14),
+            new THREE.MeshStandardMaterial({ color: 0x090e1a, roughness: 0.75, metalness: 0.15 })
+          );
+          floor.rotation.x = -Math.PI / 2;
+          floor.xb = { pointerEvents: 'none' };
+          this.add(floor);
+
+          // Subtle Floor Grid Ring
+          const stageDisc = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.2, 2.3, 0.02, 48),
+            new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.4 })
+          );
+          stageDisc.position.set(0, 0.01, -1.25);
+          stageDisc.xb = { pointerEvents: 'none' };
+          this.add(stageDisc);
+
+          this.buildRhythmStage();
+          this.buildCajonVisualizer();
+          this.buildNotePool();
+          this.buildSpatialHUD();
+
+          window.addEventListener('pointerdown', this.boundPointerDown, { passive: false });
+          window.addEventListener('keydown', this.boundKeyDown);
+        }
+
+        getLaneLayout() {
+          const aspect = window.innerWidth / window.innerHeight;
+          const isPortrait = aspect < 0.95;
+          const laneScale = isPortrait ? Math.max(0.58, Math.min(0.95, aspect * 1.15)) : 1.0;
+          const laneXs = [-0.465 * laneScale, -0.155 * laneScale, 0.155 * laneScale, 0.465 * laneScale];
+          return { isPortrait, laneScale, laneXs };
+        }
+
+        buildRhythmStage() {
+          const { laneScale, laneXs } = this.getLaneLayout();
+
+          // Highway Deck Geometry (Tilted from Spawn [y=1.82, z=-1.75] down to Strike Line [y=0.86, z=-1.02])
+          this.spawnPos = new THREE.Vector3(0, 1.82, -1.75);
+          this.strikePos = new THREE.Vector3(0, 0.86, -1.02);
+          const deckVec = new THREE.Vector3().subVectors(this.strikePos, this.spawnPos);
+          const deckLen = deckVec.length();
+          const deckMid = new THREE.Vector3().addVectors(this.spawnPos, this.strikePos).multiplyScalar(0.5);
+          const deckAngleX = Math.atan2(deckVec.y, deckVec.z); // Slope angle
+
+          const deckWidth = 1.32 * laneScale;
+          const deckMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(deckWidth, 0.025, deckLen + 0.18),
+            new THREE.MeshStandardMaterial({
+              color: 0x0f172a,
+              roughness: 0.35,
+              metalness: 0.65,
+              transparent: true,
+              opacity: 0.92
+            })
+          );
+          deckMesh.position.copy(deckMid);
+          deckMesh.position.y -= 0.025;
+          deckMesh.rotation.x = deckAngleX;
+          deckMesh.xb = { pointerEvents: 'none' };
+          this.add(deckMesh);
+
+          // Lane Guide Rails (5 dividers for 4 lanes)
+          const railOffsets = [-0.62, -0.31, 0.0, 0.31, 0.62].map(v => v * laneScale);
+          const railMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+          const railGeo = new THREE.BoxGeometry(0.008, 0.012, deckLen);
+          railOffsets.forEach(rx => {
+            const rail = new THREE.Mesh(railGeo, railMat);
+            rail.position.set(rx, deckMid.y - 0.005, deckMid.z);
+            rail.rotation.x = deckAngleX;
+            rail.xb = { pointerEvents: 'none' };
+            this.add(rail);
+          });
+
+          // Luminous Strike Line Bar
+          this.beatBarMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+          const beatBar = new THREE.Mesh(
+            new THREE.BoxGeometry(deckWidth + 0.04, 0.016, 0.024),
+            this.beatBarMat
+          );
+          beatBar.position.set(0, this.strikePos.y - 0.005, this.strikePos.z);
+          beatBar.xb = { pointerEvents: 'none' };
+          this.add(beatBar);
+
+          // 4 Interactive Drum Kit + Cajon Strike Pads
+          const padW = 0.275 * laneScale;
+          const padD = 0.25 * laneScale;
+          const padGeo = new THREE.BoxGeometry(padW, 0.055, padD);
+          const hitZoneGeo = new THREE.BoxGeometry(padW * 1.06, 0.42, 0.42);
+
+          DRUM_VOICES.forEach((voice, idx) => {
+            const texNormal = createDrumPadTexture(voice, false);
+            const texActive = createDrumPadTexture(voice, true);
+            this.padTexturesNormal.push(texNormal);
+            this.padTexturesActive.push(texActive);
+
+            const padMat = new THREE.MeshStandardMaterial({
+              map: texNormal,
+              roughness: 0.25,
+              metalness: 0.2
+            });
+
+            const padMesh = new THREE.Mesh(padGeo, padMat);
+            const basePos = new THREE.Vector3(laneXs[idx], this.strikePos.y - 0.01, this.strikePos.z + 0.05);
+            padMesh.position.copy(basePos);
+            padMesh.rotation.x = -0.35; // Angled toward player eyes & hands
+            padMesh.userData = {
+              isDrumPad: true,
+              laneIndex: idx,
+              baseY: basePos.y,
+              mat: padMat
+            };
+            // CRITICAL: Mark interactive target mesh for XR Blocks raycast
+            padMesh.xb = { pointerEvents: 'auto', reticleMode: 'auto' };
+            this.add(padMesh);
+            this.pads.push(padMesh);
+
+            // Extended invisible hit-box around pad for forgiving mobile taps & VR rays
+            const hitBox = new THREE.Mesh(
+              hitZoneGeo,
+              new THREE.MeshBasicMaterial({ visible: false })
+            );
+            hitBox.position.set(laneXs[idx], this.strikePos.y + 0.12, this.strikePos.z);
+            hitBox.userData = { isDrumPad: true, laneIndex: idx };
+            hitBox.xb = { pointerEvents: 'auto', reticleMode: 'auto' };
+            this.add(hitBox);
+            this.hitTargets.push(hitBox);
+          });
+        }
+
+        buildCajonVisualizer() {
+          const { isPortrait, laneScale } = this.getLaneLayout();
+          const cajonGroup = new THREE.Group();
+
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0x451a03,
+            roughness: 0.55,
+            metalness: 0.1
+          });
+          this.cajonTapaMat = new THREE.MeshStandardMaterial({
+            map: createCajonTapaTexture(-1),
+            roughness: 0.35,
+            metalness: 0.1
+          });
+
+          // Multi-material box: front face (+Z, index 4) gets the Cajon Tapa diagram
+          const materials = [bodyMat, bodyMat, bodyMat, bodyMat, this.cajonTapaMat, bodyMat];
+          const w = 0.30 * laneScale;
+          const h = 0.45 * laneScale;
+          const d = 0.28 * laneScale;
+
+          this.cajonMesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials);
+          this.cajonMesh.xb = { pointerEvents: 'none' };
+          cajonGroup.add(this.cajonMesh);
+
+          if (isPortrait) {
+            // On narrow mobile portrait, place cleanly below the drum pads
+            cajonGroup.position.set(0, 0.50, -1.04);
+            cajonGroup.rotation.x = -0.35;
+          } else {
+            // On desktop, tablet, and Meta Quest 3 VR, place beside the kit at ergonomic eye-hand level
+            cajonGroup.position.set(-0.88, 1.24, -1.24);
+            cajonGroup.rotation.y = 0.38;
+            cajonGroup.rotation.x = -0.10;
+          }
+
+          this.cajonBaseScale = 1.0;
+          this.add(cajonGroup);
+          this.cajonGroup = cajonGroup;
+        }
+
+        buildNotePool() {
+          const { laneScale } = this.getLaneLayout();
+          this.noteGeo.dispose();
+          this.noteGeo = new THREE.BoxGeometry(0.24 * laneScale, 0.048, 0.095);
+
+          this.noteMaterials = DRUM_VOICES.map(
+            v =>
+              new THREE.MeshStandardMaterial({
+                color: v.colorInt,
+                emissive: v.colorInt,
+                emissiveIntensity: 0.45,
+                roughness: 0.2,
+                metalness: 0.3
+              })
+          );
+
+          for (let i = 0; i < 64; i++) {
+            const mesh = new THREE.Mesh(this.noteGeo, this.noteMaterials[0]);
+            mesh.visible = false;
+            mesh.xb = { pointerEvents: 'none' };
+            this.add(mesh);
+            this.notePool.push(mesh);
+          }
+        }
+
+        buildSpatialHUD() {
+          this.timerText = new xb.UIText({
+            text: '45s',
+            style: { fontSize: 22, fontWeight: 'bold', color: '#38bdf8' }
+          });
+          this.scoreText = new xb.UIText({
+            text: 'Score: 0',
+            style: { fontSize: 22, fontWeight: 'bold', color: '#4ade80' }
+          });
+          this.comboText = new xb.UIText({
+            text: 'Combo: 0x',
+            style: { fontSize: 21, fontWeight: 'bold', color: '#fbbf24' }
+          });
+          this.accText = new xb.UIText({
+            text: 'Acc: 100%',
+            style: { fontSize: 20, fontWeight: 'bold', color: '#e2e8f0' }
+          });
+
+          const statsPanel = new xb.UIPanel({
+            style: {
+              width: '100%',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: 'rgba(15, 23, 42, 0.85)',
+              padding: 10,
+              borderRadius: 14
+            },
+            children: [this.timerText, this.scoreText, this.comboText, this.accText]
+          });
+
+          const currentGroove = GROOVE_LIBRARY[this.grooveIndex];
+          this.grooveTitleText = new xb.UIText({
+            text: `🥁 ${currentGroove.name} (${currentGroove.bpm} BPM)`,
+            style: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: '#ffffff' }
+          });
+
+          this.cajonTipText = new xb.UIText({
+            text: currentGroove.tip,
+            style: { fontSize: 17, fontWeight: 'normal', textAlign: 'center', lineHeight: 1.3, color: '#fde68a' }
+          });
+
+          const infoPanel = new xb.UIPanel({
+            style: {
+              width: '100%',
+              flexDirection: 'column',
+              gap: 4,
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              borderRadius: 16,
+              borderWidth: 2,
+              borderColor: '#f97316',
+              padding: 10,
+              justifyContent: 'center',
+              alignItems: 'center'
+            },
+            children: [this.grooveTitleText, this.cajonTipText]
+          });
+
+          this.statusBanner = new xb.UIText({
+            text: 'Keys [D F J K], Tap Pads, or VR Trigger to play Drum Kit & Cajon!',
+            style: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', color: '#38bdf8' }
+          });
+
+          this.startBtn = new xb.UIButton({
+            label: 'Start Groove',
+            icon: 'play_arrow',
+            style: { flexGrow: 1.2 },
+            onClick: () => this.toggleStartPause()
+          });
+
+          const resetBtn = new xb.UIButton({
+            label: 'Reset',
+            icon: 'restart_alt',
+            style: { flexGrow: 0.9 },
+            onClick: () => this.resetSession()
+          });
+
+          const exitBtn = new xb.UIButton({
+            label: 'Exit VR',
+            icon: 'logout',
+            style: { flexGrow: 0.9 },
+            onClick: () => this.exitVR()
+          });
+
+          const row1 = new xb.UIPanel({
+            style: { width: '100%', flexDirection: 'row', gap: 10, justifyContent: 'center' },
+            children: [this.startBtn, resetBtn, exitBtn]
+          });
+
+          this.grooveBtn = new xb.UIButton({
+            label: 'Next Groove',
+            icon: 'queue_music',
+            style: { flexGrow: 1.1 },
+            onClick: () => this.cycleGroove()
+          });
+
+          this.tempoBtn = new xb.UIButton({
+            label: 'Tempo: 1.0x',
+            icon: 'speed',
+            style: { flexGrow: 0.9 },
+            onClick: () => this.cycleTempo()
+          });
+
+          const row2 = new xb.UIPanel({
+            style: { width: '100%', flexDirection: 'row', gap: 10, justifyContent: 'center' },
+            children: [this.grooveBtn, this.tempoBtn]
+          });
+
+          this.hudCard = new xb.UICard({
+            size: { width: 1.02, height: 'auto' },
+            manipulation: false,
+            edge: false,
+            style: {
+              flexDirection: 'column',
+              gap: 8,
+              padding: 14,
+              backgroundColor: 'rgba(11, 19, 43, 0.94)',
+              borderRadius: 22,
+              borderColor: '#38bdf8',
+              borderWidth: 2
+            },
+            children: [statsPanel, infoPanel, this.statusBanner, row1, row2]
+          });
+
+          this.hudCard.position.set(0, 2.24, -1.68);
+          this.hudCard.rotation.x = 0.16;
+          this.add(this.hudCard);
+        }
+
+        getEffectiveBPM() {
+          const base = GROOVE_LIBRARY[this.grooveIndex].bpm;
+          return Math.round(base * this.tempoMultipliers[this.tempoIdx]);
+        }
+
+        updateGrooveHeaderUI() {
+          const g = GROOVE_LIBRARY[this.grooveIndex];
+          const effBpm = this.getEffectiveBPM();
+          this.grooveTitleText.text = `🥁 ${g.name} (${effBpm} BPM)`;
+          this.cajonTipText.text = g.tip;
+          this.tempoBtn.label = `Tempo: ${this.tempoMultipliers[this.tempoIdx].toFixed(2).replace('.00', '.0')}x`;
+          this.timerText.text = g.isFreeJam ? 'JAM ∞' : `${Math.ceil(this.timeLeft)}s`;
+        }
+
+        cycleGroove() {
+          this.sfx.ensureContext();
+          this.grooveIndex = (this.grooveIndex + 1) % GROOVE_LIBRARY.length;
+          this.resetSession(false);
+          this.updateGrooveHeaderUI();
+          this.statusBanner.text = `Selected: ${GROOVE_LIBRARY[this.grooveIndex].name}`;
+          this.statusBanner.style.color = '#fbbf24';
+        }
+
+        cycleTempo() {
+          this.sfx.ensureContext();
+          this.tempoIdx = (this.tempoIdx + 1) % this.tempoMultipliers.length;
+          this.resetSession(false);
+          this.updateGrooveHeaderUI();
+          this.statusBanner.text = `Tempo set to ${this.getEffectiveBPM()} BPM (${this.tempoMultipliers[this.tempoIdx]}x)`;
+          this.statusBanner.style.color = '#38bdf8';
+        }
+
+        buildGrooveTimeline() {
+          this.scheduledNotes = [];
+          this.clearActiveNotes();
+
+          const groove = GROOVE_LIBRARY[this.grooveIndex];
+          if (groove.isFreeJam || groove.pattern.length === 0) return;
+
+          const effBpm = this.getEffectiveBPM();
+          const sixteenthSec = 60 / effBpm / 4;
+          const barSec = sixteenthSec * 16;
+
+          // 1-bar count-in (4 quarter beats) before notes cross the strike line
+          const countInSec = sixteenthSec * 16;
+          const totalDuration = groove.duration;
+
+          let barStart = countInSec;
+          while (barStart < totalDuration - 0.5) {
+            for (const item of groove.pattern) {
+              const targetTime = barStart + item.step * sixteenthSec;
+              if (targetTime <= totalDuration - 0.2) {
+                for (const lane of item.lanes) {
+                  this.scheduledNotes.push({
+                    lane,
+                    targetTime,
+                    spawned: false,
+                    judged: false
+                  });
+                }
+              }
+            }
+            barStart += barSec;
+          }
+          this.scheduledNotes.sort((a, b) => a.targetTime - b.targetTime);
+        }
+
+        toggleStartPause() {
+          this.sfx.ensureContext();
+          const groove = GROOVE_LIBRARY[this.grooveIndex];
+          if (!groove.isFreeJam && this.timeLeft <= 0) {
+            this.resetSession(true);
+            return;
+          }
+
+          this.isPlaying = !this.isPlaying;
+          if (this.isPlaying) {
+            if (this.songTime === 0) {
+              this.buildGrooveTimeline();
+            }
+            this.startBtn.label = 'Pause';
+            this.startBtn.icon = 'pause';
+            this.statusBanner.text = groove.isFreeJam
+              ? 'FREE JAM LIVE: Play any groove on the 4 pads!'
+              : 'COUNT-IN READY: Strike pads as notes cross the cyan bar!';
+            this.statusBanner.style.color = '#4ade80';
+          } else {
+            this.startBtn.label = 'Resume';
+            this.startBtn.icon = 'play_arrow';
+            this.statusBanner.text = 'Session paused.';
+            this.statusBanner.style.color = '#fbbf24';
+          }
+        }
+
+        resetSession(autoStart = false) {
+          this.score = 0;
+          this.combo = 0;
+          this.maxCombo = 0;
+          this.hitsCount = 0;
+          this.totalNotesJudged = 0;
+          this.songTime = 0;
+          this.lastQuarterBeat = -1;
+
+          const groove = GROOVE_LIBRARY[this.grooveIndex];
+          this.timeLeft = groove.isFreeJam ? 999 : groove.duration;
+          this.isPlaying = false;
+          this.clearActiveNotes();
+          this.scheduledNotes = [];
+
+          this.scoreText.text = 'Score: 0';
+          this.comboText.text = 'Combo: 0x';
+          this.accText.text = 'Acc: 100%';
+          this.timerText.style.color = '#38bdf8';
+          this.startBtn.label = 'Start Groove';
+          this.startBtn.icon = 'play_arrow';
+          this.updateGrooveHeaderUI();
+
+          if (autoStart) {
+            this.toggleStartPause();
+          } else {
+            this.statusBanner.text = 'Ready! Press Start Groove or test the pads anytime.';
+            this.statusBanner.style.color = '#38bdf8';
+          }
+        }
+
+        exitVR() {
+          if (xb.core?.renderer?.xr?.isPresenting) {
+            const session = xb.core.renderer.xr.getSession();
+            if (session) session.end();
+          }
+        }
+
+        clearActiveNotes() {
+          for (const n of this.activeNotes) {
+            if (n.mesh) n.mesh.visible = false;
+          }
+          this.activeNotes = [];
+        }
+
+        // --- INPUT HANDLERS (DESKTOP KEYBOARD, MOBILE TOUCH, META QUEST 3 VR) ---
+        onKeyDown(event) {
+          if (event.repeat) return;
+          const k = event.key.toLowerCase();
+          if (k === 'd' || k === '1' || k === 'arrowleft') this.triggerDrumPad(0);
+          else if (k === 'f' || k === '2' || k === 'arrowdown') this.triggerDrumPad(1);
+          else if (k === 'j' || k === '3' || k === 'arrowup') this.triggerDrumPad(2);
+          else if (k === 'k' || k === '4' || k === 'arrowright') this.triggerDrumPad(3);
+          else if (k === ' ') {
+            event.preventDefault();
+            if (!this.isPlaying) this.toggleStartPause();
+            else this.triggerDrumPad(0);
+          }
+        }
+
+        onScreenPointerDown(event) {
+          this.sfx.ensureContext();
+          if (xb.core?.renderer?.xr?.isPresenting) return;
+          if (event.target && event.target.closest && event.target.closest('button')) return;
+
+          const rect = xb.core.renderer.domElement.getBoundingClientRect();
+          this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+          this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+          this.raycaster.setFromCamera(this.pointer, xb.core.camera);
+          const hits = this.raycaster.intersectObjects(this.hitTargets, false);
+          if (hits.length > 0) {
+            const laneIdx = hits[0].object.userData.laneIndex;
+            if (typeof laneIdx === 'number') {
+              this.triggerDrumPad(laneIdx);
+            }
+          }
+        }
+
+        onSelectStart(event) {
+          this.sfx.ensureContext();
+          const controller = event.source?.controller;
+          if (controller) {
+            this.rayOrigin.setFromMatrixPosition(controller.matrixWorld);
+            this.tempMatrix.identity().extractRotation(controller.matrixWorld);
+            this.rayDirection.set(0, 0, -1).applyMatrix4(this.tempMatrix).normalize();
+          } else {
+            this.rayOrigin.setFromMatrixPosition(xb.core.camera.matrixWorld);
+            xb.core.camera.getWorldDirection(this.rayDirection);
+          }
+
+          this.raycaster.set(this.rayOrigin, this.rayDirection);
+          const hits = this.raycaster.intersectObjects(this.hitTargets, false);
+          if (hits.length > 0) {
+            const laneIdx = hits[0].object.userData.laneIndex;
+            if (typeof laneIdx === 'number') {
+              this.triggerDrumPad(laneIdx);
+            }
+          }
+        }
+
+        onObjectSelectStart(event) {
+          const target = event.target;
+          if (target?.userData?.isDrumPad && typeof target.userData.laneIndex === 'number') {
+            this.triggerDrumPad(target.userData.laneIndex);
+            event.stopPropagation();
+          }
+        }
+
+        // --- CORE DRUM HIT & CAJON FEEDBACK LOGIC ---
+        triggerDrumPad(laneIdx) {
+          const voice = DRUM_VOICES[laneIdx];
+          const pad = this.pads[laneIdx];
+
+          // Play authentic percussion audio immediately
+          this.sfx.playDrum(laneIdx, 1.0);
+
+          // Animate 3D Pad compression & flash texture
+          this.padFlashTimers[laneIdx] = 0.14;
+          pad.position.y = pad.userData.baseY - 0.024;
+          pad.userData.mat.map = this.padTexturesActive[laneIdx];
+          pad.userData.mat.map.needsUpdate = true;
+          pad.userData.mat.needsUpdate = true;
+
+          // Update 3D Cajon Tapa Strike-Zone Visualizer
+          this.highlightCajonZone(laneIdx);
+
+          const groove = GROOVE_LIBRARY[this.grooveIndex];
+          if (!this.isPlaying || groove.isFreeJam) {
+            // Free Jam or Practice hit feedback
+            this.fx.spawnHitBurst(pad.position, laneIdx, true);
+            this.statusBanner.text = `${voice.kitName}  ⇄  Cajon ${voice.cajonZone} (${voice.cajonDetail})`;
+            this.statusBanner.style.color = voice.colorHex;
+            return;
+          }
+
+          // Rhythm Hit Judgment against closest unjudged note in this lane
+          let bestNote = null;
+          let bestAbsDiff = Infinity;
+
+          for (const note of this.activeNotes) {
+            if (note.judged || note.lane !== laneIdx) continue;
+            const diff = Math.abs(this.songTime - note.targetTime);
+            if (diff < bestAbsDiff) {
+              bestAbsDiff = diff;
+              bestNote = note;
+            }
+          }
+
+          const HIT_WINDOW = 0.23; // 230ms generous cross-platform window
+          if (bestNote && bestAbsDiff <= HIT_WINDOW) {
+            bestNote.judged = true;
+            if (bestNote.mesh) bestNote.mesh.visible = false;
+
+            this.hitsCount += 1;
+            this.totalNotesJudged += 1;
+            this.combo += 1;
+            if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+
+            const multiplier = Math.min(4, 1 + Math.floor(this.combo / 8));
+            let label = 'GOOD';
+            let basePts = 65;
+            let isPerfect = false;
+
+            if (bestAbsDiff <= 0.085) {
+              label = 'PERFECT!';
+              basePts = 100;
+              isPerfect = true;
+            } else if (bestAbsDiff > 0.16) {
+              label = this.songTime < bestNote.targetTime ? 'EARLY' : 'LATE';
+              basePts = 40;
+            }
+
+            const earned = basePts * multiplier;
+            this.score += earned;
+            this.fx.spawnHitBurst(pad.position, laneIdx, isPerfect);
+
+            this.scoreText.text = `Score: ${this.score}`;
+            this.comboText.text = `Combo: ${this.combo}x`;
+            this.updateAccuracyUI();
+
+            this.statusBanner.text = `${label} +${earned} (${multiplier}x) • ${voice.kitName} → ${voice.cajonZone}`;
+            this.statusBanner.style.color = isPerfect ? '#4ade80' : '#38bdf8';
+          } else {
+            // Misfire outside any note window
+            this.combo = 0;
+            this.score = Math.max(0, this.score - 15);
+            this.fx.spawnMissSpark(pad.position);
+            this.scoreText.text = `Score: ${this.score}`;
+            this.comboText.text = 'Combo: 0x';
+            this.statusBanner.text = `OFF-BEAT (${voice.cajonZone}) -15 PTS — Watch the strike bar!`;
+            this.statusBanner.style.color = '#f97316';
+          }
+        }
+
+        highlightCajonZone(laneIdx) {
+          if (!this.cajonTapaMat) return;
+          if (this.cajonTapaMat.map) this.cajonTapaMat.map.dispose();
+          this.cajonTapaMat.map = createCajonTapaTexture(laneIdx);
+          this.cajonTapaMat.map.needsUpdate = true;
+          this.cajonTapaMat.needsUpdate = true;
+          this.cajonActiveLane = laneIdx;
+          this.cajonActiveTimer = 0.24;
+          if (this.cajonMesh) {
+            this.cajonMesh.scale.setScalar(1.06);
+          }
+        }
+
+        updateAccuracyUI() {
+          if (this.totalNotesJudged === 0) {
+            this.accText.text = 'Acc: 100%';
+            return;
+          }
+          const pct = Math.round((this.hitsCount / this.totalNotesJudged) * 100);
+          this.accText.text = `Acc: ${pct}%`;
+        }
+
+        // --- FRAME UPDATE LOOP ---
+        update() {
+          const dt = xb.getDeltaTime();
+          if (this.fx) this.fx.update(dt);
+
+          // Restore pad spring animation & active textures
+          for (let i = 0; i < 4; i++) {
+            const pad = this.pads[i];
+            if (!pad) continue;
+            pad.position.y = THREE.MathUtils.lerp(pad.position.y, pad.userData.baseY, Math.min(1, dt * 18));
+
+            if (this.padFlashTimers[i] > 0) {
+              this.padFlashTimers[i] -= dt;
+              if (this.padFlashTimers[i] <= 0) {
+                pad.userData.mat.map = this.padTexturesNormal[i];
+                pad.userData.mat.map.needsUpdate = true;
+                pad.userData.mat.needsUpdate = true;
+              }
+            }
+          }
+
+          // Restore Cajon visualizer bounce & highlight
+          if (this.cajonMesh) {
+            this.cajonMesh.scale.lerp(new THREE.Vector3(1, 1, 1), Math.min(1, dt * 14));
+          }
+          if (this.cajonActiveTimer > 0) {
+            this.cajonActiveTimer -= dt;
+            if (this.cajonActiveTimer <= 0 && this.cajonActiveLane !== -1) {
+              this.cajonActiveLane = -1;
+              if (this.cajonTapaMat.map) this.cajonTapaMat.map.dispose();
+              this.cajonTapaMat.map = createCajonTapaTexture(-1);
+              this.cajonTapaMat.map.needsUpdate = true;
+              this.cajonTapaMat.needsUpdate = true;
+            }
+          }
+
+          // VR Physical Hand/Controller Proximity Strike Support (Air-Cajon / Air-Drums!)
+          this.checkVRPhysicalDrumStrikes(dt);
+
+          if (!this.isPlaying) return;
+
+          const groove = GROOVE_LIBRARY[this.grooveIndex];
+          this.songTime += dt;
+
+          // Quarter-note metronome & beat bar pulse
+          const effBpm = this.getEffectiveBPM();
+          const quarterSec = 60 / effBpm;
+          const currentQuarter = Math.floor(this.songTime / quarterSec);
+          if (currentQuarter !== this.lastQuarterBeat) {
+            this.lastQuarterBeat = currentQuarter;
+            const isDownbeat = currentQuarter % 4 === 0;
+            this.beatBarMat.color.setHex(isDownbeat ? 0xfbbf24 : 0x38bdf8);
+            // Audible metronome during count-in (first 4 beats) or in Free Jam mode
+            if (currentQuarter < 4 || groove.isFreeJam) {
+              this.sfx.playMetronome(isDownbeat);
+            }
+          } else {
+            this.beatBarMat.color.lerp(new THREE.Color(0x1e293b), Math.min(1, dt * 8));
+          }
+
+          if (groove.isFreeJam) return;
+
+          // Countdown Timer
+          this.timeLeft -= dt;
+          if (this.timeLeft <= 0) {
+            this.timeLeft = 0;
+            this.timerText.text = '0s';
+            this.finishGrooveDrill();
+            return;
+          }
+          const secDisplay = Math.ceil(this.timeLeft);
+          this.timerText.text = `${secDisplay}s`;
+          if (secDisplay <= 8) {
+            this.timerText.style.color = '#ef4444';
+          }
+
+          // Spawn upcoming notes within LEAD_TIME (1.65s runway)
+          const LEAD_TIME = 1.65;
+          const { laneXs } = this.getLaneLayout();
+
+          for (const item of this.scheduledNotes) {
+            if (!item.spawned && item.targetTime - this.songTime <= LEAD_TIME) {
+              const mesh = this.notePool.find(m => !m.visible);
+              if (mesh) {
+                item.spawned = true;
+                item.mesh = mesh;
+                mesh.material = this.noteMaterials[item.lane];
+                mesh.position.set(laneXs[item.lane], this.spawnPos.y, this.spawnPos.z);
+                mesh.visible = true;
+                this.activeNotes.push(item);
+              }
+            }
+          }
+
+          // Move active notes smoothly down the highway
+          for (let i = this.activeNotes.length - 1; i >= 0; i--) {
+            const note = this.activeNotes[i];
+            if (note.judged) {
+              if (note.mesh) note.mesh.visible = false;
+              this.activeNotes.splice(i, 1);
+              continue;
+            }
+
+            const progress = 1 - (note.targetTime - this.songTime) / LEAD_TIME;
+            const y = THREE.MathUtils.lerp(this.spawnPos.y, this.strikePos.y, progress);
+            const z = THREE.MathUtils.lerp(this.spawnPos.z, this.strikePos.z, progress);
+            if (note.mesh) {
+              note.mesh.position.set(laneXs[note.lane], y, z);
+            }
+
+            // Check if note passed past the late window (progress > 1.15 -> ~245ms late)
+            if (this.songTime - note.targetTime > 0.24) {
+              note.judged = true;
+              if (note.mesh) note.mesh.visible = false;
+              this.activeNotes.splice(i, 1);
+
+              this.totalNotesJudged += 1;
+              this.combo = 0;
+              this.score = Math.max(0, this.score - 20);
+              this.sfx.playMissThud();
+              this.fx.spawnMissSpark(this.pads[note.lane].position);
+
+              this.scoreText.text = `Score: ${this.score}`;
+              this.comboText.text = 'Combo: 0x';
+              this.updateAccuracyUI();
+              this.statusBanner.text = `MISSED ${DRUM_VOICES[note.lane].kitName} (${DRUM_VOICES[note.lane].cajonZone}) -20 PTS`;
+              this.statusBanner.style.color = '#ef4444';
+            }
+          }
+        }
+
+        checkVRPhysicalDrumStrikes(dt) {
+          if (!xb.core?.renderer?.xr?.isPresenting) return;
+          const controllers = xb.core?.input?.controllers;
+          if (!controllers) return;
+
+          for (let c = 0; c < Math.min(2, controllers.length); c++) {
+            if (this.vrStrikeCooldowns[c] > 0) {
+              this.vrStrikeCooldowns[c] -= dt;
+              continue;
+            }
+            const ctrl = controllers[c];
+            if (!ctrl) continue;
+            const pos = ctrl.position;
+            for (let i = 0; i < this.pads.length; i++) {
+              if (pos.distanceTo(this.pads[i].position) < 0.14) {
+                this.triggerDrumPad(i);
+                this.vrStrikeCooldowns[c] = 0.18;
+                break;
+              }
+            }
+          }
+        }
+
+        finishGrooveDrill() {
+          this.isPlaying = false;
+          this.clearActiveNotes();
+          this.sfx.playSessionComplete();
+
+          this.startBtn.label = 'Replay Groove';
+          this.startBtn.icon = 'restart_alt';
+
+          const acc = this.totalNotesJudged > 0 ? Math.round((this.hitsCount / this.totalNotesJudged) * 100) : 100;
+          let rank = 'Rhythm Apprentice';
+          if (acc >= 92 && this.score >= 2200) rank = 'Master Cajonist & Session Pro 🔥';
+          else if (acc >= 80 && this.score >= 1400) rank = 'Acoustic Groove Specialist ⚡';
+          else if (acc >= 65) rank = 'Pocket Percussionist 🥁';
+
+          this.grooveTitleText.text = `🏆 GROOVE COMPLETE • ${rank}`;
+          this.cajonTipText.text = `Final Score: ${this.score} PTS | Accuracy: ${acc}% | Max Combo: ${this.maxCombo}x`;
+          this.statusBanner.text = 'Ready to apply this groove on a real Cajon! Tap Replay or Next Groove.';
+          this.statusBanner.style.color = '#4ade80';
+        }
+
+        dispose() {
+          window.removeEventListener('pointerdown', this.boundPointerDown);
+          window.removeEventListener('keydown', this.boundKeyDown);
+          this.clearActiveNotes();
+          if (this.fx) this.fx.dispose();
+          this.noteGeo.dispose();
+          this.padTexturesNormal.forEach(t => t.dispose());
+          this.padTexturesActive.forEach(t => t.dispose());
+        }
+      }
+
+      // Initialize XR Blocks Application
+      const options = new xb.Options();
+      options.setAppTitle('Cajon & Kit Studio XR');
+      options.controllers.visualizeRays = true;
+      options.reticles.enabled = true;
+      options.interaction.raycastMode = 'select';
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        xb.add(new CajonKitStudioScript());
+        await xb.init(options);
+      });
+    </script>
+  </body>
+</html>

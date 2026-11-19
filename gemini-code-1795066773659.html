@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Pro Studio Drum Kit Master — WebXR Rhythm & Percussion Drill</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link type="text/css" rel="stylesheet" href="https://xrblocks.github.io/css/xr.css" />
+    <script>window.litDisableBundleWarning = true;</script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+        "three/": "https://cdn.jsdelivr.net/npm/three@0.184.0/",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
+        "@pmndrs/uikit": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit@1.0.64/dist/index.min.js",
+        "@pmndrs/uikit-pub-sub": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit-pub-sub@1.0.64/dist/index.min.js",
+        "@pmndrs/msdfonts": "https://cdn.jsdelivr.net/npm/@pmndrs/msdfonts@1.0.64/dist/index.min.js",
+        "@preact/signals-core": "https://cdn.jsdelivr.net/npm/@preact/signals-core@1.14.0/dist/signals-core.mjs",
+        "yoga-layout/load": "https://cdn.jsdelivr.net/npm/yoga-layout@3.2.1/dist/src/load.js",
+        "lit": "https://esm.sh/lit@3.3.1",
+        "lit/": "https://esm.sh/lit@3.3.1/",
+        "xrblocks": "https://cdn.jsdelivr.net/npm/xrblocks@0.21.1/build/xrblocks.js",
+        "xrblocks/addons/": "https://cdn.jsdelivr.net/npm/xrblocks@0.21.1/build/addons/"
+      }
+    }
+    </script>
+    <style>
+      body, html {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; background-color: #070912;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        touch-action: none; user-select: none; -webkit-user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import * as xb from 'xrblocks';
+
+      // --- 1. PROCEDURAL DRUM KIT & GAME AUDIO ENGINE ---
+      class SoundFX {
+        constructor() {
+          this.ctx = null;
+          this.noiseBuffer = null;
+        }
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx({ latencyHint: 'interactive' });
+            this.noiseBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 1.0, this.ctx.sampleRate);
+            const d = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+          }
+          if (this.ctx.state === 'suspended') this.ctx.resume();
+        }
+
+        // Particle stream / stick air-whoosh spray sound when a selection is made
+        playSpray() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const src = this.ctx.createBufferSource();
+            src.buffer = this.noiseBuffer;
+            const f = this.ctx.createBiquadFilter();
+            f.type = 'bandpass';
+            f.frequency.setValueAtTime(1450, now);
+            const g = this.ctx.createGain();
+            g.gain.setValueAtTime(0.26, now);
+            g.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+            src.connect(f);
+            f.connect(g);
+            g.connect(this.ctx.destination);
+            src.start(now);
+            src.stop(now + 0.15);
+          } catch (_) {}
+        }
+
+        // Bright resonant ring sound + drum accent when an answer is correct
+        playSuccess(drumId = 'crash') {
+          try {
+            this.ensureContext();
+            this.playDrumPiece(drumId, 0.9);
+            const now = this.ctx.currentTime;
+            [1046.5, 1318.5, 1567.98, 2093.0].forEach((freq, idx) => {
+              const osc = this.ctx.createOscillator();
+              const gain = this.ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now + idx * 0.035);
+              gain.gain.setValueAtTime(0.22, now + idx * 0.035);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.035 + 0.38);
+              osc.connect(gain);
+              gain.connect(this.ctx.destination);
+              osc.start(now + idx * 0.035);
+              osc.stop(now + idx * 0.035 + 0.4);
+            });
+          } catch (_) {}
+        }
+
+        // Low error buzz when an answer is wrong
+        playWrong() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const osc1 = this.ctx.createOscillator();
+            const osc2 = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc1.type = 'sawtooth';
+            osc2.type = 'square';
+            osc1.frequency.setValueAtTime(135, now);
+            osc1.frequency.linearRampToValueAtTime(88, now + 0.28);
+            osc2.frequency.setValueAtTime(142, now);
+            osc2.frequency.linearRampToValueAtTime(92, now + 0.28);
+            gain.gain.setValueAtTime(0.24, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.32);
+            osc2.stop(now + 0.32);
+          } catch (_) {}
+        }
+
+        // Loud sub-kick floor thud when a target hits the floor
+        playFloorThud() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(125, now);
+            osc.frequency.exponentialRampToValueAtTime(32, now + 0.34);
+            gain.gain.setValueAtTime(0.55, now);
+            gain.gain.exponentialRampToValueAtTime(0.005, now + 0.36);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.38);
+          } catch (_) {}
+        }
+
+        // Metronome warning tick in the final 8 seconds
+        playTick() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(980, now);
+            gain.gain.setValueAtTime(0.09, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.05);
+          } catch (_) {}
+        }
+
+        // Grand victory chime fanfare when the 30-second drill ends
+        playVictoryChime() {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98];
+            notes.forEach((freq, idx) => {
+              const osc = this.ctx.createOscillator();
+              const gain = this.ctx.createGain();
+              osc.type = 'triangle';
+              const startTime = now + idx * 0.08;
+              osc.frequency.setValueAtTime(freq, startTime);
+              gain.gain.setValueAtTime(0.22, startTime);
+              gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.55);
+              osc.connect(gain);
+              gain.connect(this.ctx.destination);
+              osc.start(startTime);
+              osc.stop(startTime + 0.58);
+            });
+          } catch (_) {}
+        }
+
+        // Realistic synthesized drum kit voices
+        playDrumPiece(id, v = 1.0) {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            if (id === 'kick') {
+              const osc = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(150, now);
+              osc.frequency.exponentialRampToValueAtTime(38, now + 0.12);
+              g.gain.setValueAtTime(0.75 * v, now);
+              g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+              osc.connect(g);
+              g.connect(this.ctx.destination);
+              osc.start(now);
+              osc.stop(now + 0.36);
+            } else if (id === 'snare') {
+              const osc = this.ctx.createOscillator();
+              const og = this.ctx.createGain();
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(210, now);
+              osc.frequency.exponentialRampToValueAtTime(110, now + 0.1);
+              og.gain.setValueAtTime(0.38 * v, now);
+              og.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+              osc.connect(og);
+              og.connect(this.ctx.destination);
+              osc.start(now);
+              osc.stop(now + 0.15);
+
+              const noise = this.ctx.createBufferSource();
+              noise.buffer = this.noiseBuffer;
+              const hp = this.ctx.createBiqu

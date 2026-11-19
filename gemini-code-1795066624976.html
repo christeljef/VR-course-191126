@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>WebXR Neon Drum Kit — Meta Quest 3</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link type="text/css" rel="stylesheet" href="https://xrblocks.github.io/css/xr.css" />
+    <script>window.litDisableBundleWarning = true;</script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+        "three/": "https://cdn.jsdelivr.net/npm/three@0.184.0/",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
+        "@pmndrs/uikit": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit@1.0.64/dist/index.min.js",
+        "@pmndrs/uikit-pub-sub": "https://cdn.jsdelivr.net/npm/@pmndrs/uikit-pub-sub@1.0.64/dist/index.min.js",
+        "@pmndrs/msdfonts": "https://cdn.jsdelivr.net/npm/@pmndrs/msdfonts@1.0.64/dist/index.min.js",
+        "@preact/signals-core": "https://cdn.jsdelivr.net/npm/@preact/signals-core@1.14.0/dist/signals-core.mjs",
+        "yoga-layout/load": "https://cdn.jsdelivr.net/npm/yoga-layout@3.2.1/dist/src/load.js",
+        "lit": "https://esm.sh/lit@3.3.1",
+        "lit/": "https://esm.sh/lit@3.3.1/",
+        "xrblocks": "https://cdn.jsdelivr.net/npm/xrblocks@0.21.1/build/xrblocks.js",
+        "xrblocks/addons/": "https://cdn.jsdelivr.net/npm/xrblocks@0.21.1/build/addons/"
+      }
+    }
+    </script>
+    <style>
+      body, html {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; background-color: #050510;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        touch-action: none; user-select: none; -webkit-user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import * as xb from 'xrblocks';
+
+      // --- 1. LOW-LATENCY PROCEDURAL DRUM SYNTHESIZER ---
+      class SoundFX {
+        constructor() {
+          this.ctx = null;
+          this.noiseBuffer = null;
+        }
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx({ latencyHint: 'interactive' });
+            // Pre-allocate white noise buffer once for zero-latency snare/cymbal hits
+            this.noiseBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 1.2, this.ctx.sampleRate);
+            const data = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < data.length; i++) {
+              data[i] = Math.random() * 2 - 1;
+            }
+          }
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        }
+
+        playDrum(id, velocity = 1.0) {
+          try {
+            this.ensureContext();
+            const v = THREE.MathUtils.clamp(velocity, 0.35, 1.35);
+            switch (id) {
+              case 'kick': this.playKick(v); break;
+              case 'snare': this.playSnare(v); break;
+              case 'hihat': this.playHiHat(v); break;
+              case 'tom': this.playTom(v); break;
+              case 'crash': this.playCrash(v); break;
+              default: this.playSnare(v); break;
+            }
+          } catch (_) {}
+        }
+
+        playKick(v = 1.0) {
+          const now = this.ctx.currentTime;
+          // Sub-bass punch
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(155, now);
+          osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
+          osc.frequency.exponentialRampToValueAtTime(32, now + 0.36);
+
+          gain.gain.setValueAtTime(0.85 * v, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+          // Beater attack click
+          const clickOsc = this.ctx.createOscillator();
+          const clickGain = this.ctx.createGain();
+          clickOsc.type = 'triangle';
+          clickOsc.frequency.setValueAtTime(340, now);
+          clickOsc.frequency.exponentialRampToValueAtTime(60, now + 0.035);
+          clickGain.gain.setValueAtTime(0.35 * v, now);
+          clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          clickOsc.connect(clickGain);
+          clickGain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.4);
+          clickOsc.start(now);
+          clickOsc.stop(now + 0.045);
+        }
+
+        playSnare(v = 1.0) {
+          const now = this.ctx.currentTime;
+          // Drum shell tone
+          const osc = this.ctx.createOscillator();
+          const oscGain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(215, now);
+          osc.frequency.exponentialRampToValueAtTime(115, now + 0.1);
+          oscGain.gain.setValueAtTime(0.42 * v, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          osc.connect(oscGain);
+          oscGain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.16);
+
+          // Snare wire snap
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = this.noiseBuffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'highpass';
+          filter.frequency.setValueAtTime(1100, now);
+          const noiseGain = this.ctx.createGain();
+          noiseGain.gain.setValueAtTime(0.52 * v, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.005, now + 0.21);
+
+          noise.connect(filter);
+          filter.connect(noiseGain);
+          noiseGain.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + 0.22);
+        }
+
+        playHiHat(v = 1.0) {
+          const now = this.ctx.currentTime;
+          // Crispy high-frequency metallic sizzle
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = this.noiseBuffer;
+
+          const hp = this.ctx.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.setValueAtTime(6800, now);
+
+          const bp = this.ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.setValueAtTime(9200, now);
+          bp.Q.setValueAtTime(1.4, now);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.45 * v, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+          noise.connect(hp);
+          hp.connect(bp);
+          bp.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + 0.12);
+
+          // Metallic overtone ping
+          [370, 555, 812].forEach((freq) => {
+            const osc = this.ctx.createOscillator();
+            const oGain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq * 4, now);
+            oGain.gain.setValueAtTime(0.03 * v, now);
+            oGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.06);
+            osc.connect(hp);
+            osc.start(now);
+            osc.stop(now + 0.065);
+          });
+        }
+
+        playTom(v = 1.0) {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(235, now);
+          osc.frequency.exponentialRampToValueAtTime(98, now + 0.22);
+
+          gain.gain.setValueAtTime(0.68 * v, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.31);
+
+          const slap = this.ctx.createOscillator();
+          const slapGain = this.ctx.createGain();
+          slap.type = 'triangle';
+          slap.frequency.setValueAtTime(360, now);
+          slap.frequency.exponentialRampToValueAtTime(140, now + 0.045);
+          slapGain.gain.setValueAtTime(0.24 * v, now);
+          slapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          slap.connect(slapGain);
+          slapGain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.32);
+          slap.start(now);
+          slap.stop(now + 0.055);
+        }
+
+        playCrash(v = 1.0) {
+          const now = this.ctx.currentTime;
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = this.noiseBuffer;
+
+          const hp = this.ctx.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.setValueAtTime(3400, now);
+
+          const bp = this.ctx.createBiquadFilter();
+          bp.type = 'peaking';
+          bp.frequency.setValueAtTime(5800, now);
+          bp.gain.setValueAtTime(6, now);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.52 * v, now);
+          gain.gain.exponentialRampToValueAtTime(0.002, now + 0.92);
+
+          noise.connect(hp);
+          hp.connect(bp);
+          bp.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + 0.95);
+
+          // Inharmonic metallic shimmer cluster
+          [415, 622, 854, 1188, 1540].forEach((freq) => {
+            const osc = this.ctx.createOscillator();
+            const oGain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq * 2.2, now);
+            oGain.gain.setValueAtTime(0.032 * v, now);
+            oGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.45);
+            osc.connect(hp);
+            osc.start(now);
+            osc.stop(now + 0.48);
+          });
+        }
+
+        playMetronomeClick(accent = false) {
+          try {
+            this.ensureContext();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(accent ? 1200 : 850, now);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.045);
+          } catch (_) {}
+        }
+      }
+
+      // --- 2. ZERO-ALLOCATION PARTICLE & SHOCKWAVE ENGINE ---
+      class ParticleFX {
+        constructor(scene) {
+          this.scene = scene;
+          this.particles = [];
+          this.rings = [];
+
+          const geo = new THREE.SphereGeometry(0.018, 8, 8);
+          this.materials = {
+            kick: new THREE.MeshBasicMaterial({ color: 0xff2a85, transparent: true, opacity: 0.95 }),
+            snare: new THREE.MeshBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.95 }),
+            hihat: new THREE.MeshBasicMaterial({ color: 0x39ff14, transparent: true, opacity: 0.95 }),
+            tom: new THREE.MeshBasicMaterial({ color: 0xff7b00, transparent: true, opacity: 0.95 }),
+            crash: new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.95 }),
+            laser: new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.85 })
+          };
+
+          // Pre-allocated particle pool (Zero allocation during frame loop)
+          for (let i = 0; i < 110; i++) {
+            const mesh = new THREE.Mesh(geo, this.materials.snare);
+            mesh.visible = false;
+            mesh.xb = { pointerEvents: 'none' };
+            this.scene.add(mesh);
+            this.particles.push({ mesh, vel: new THREE.Vector3(), life: 0, maxLife: 1 });
+          }
+
+          // Pre-allocated shockwave rings
+          const ringGeo = new THREE.RingGeometry(0.14, 0.18, 28);
+          for (let i = 0; i < 15; i++) {
+            const mesh = new THREE.Mesh(ringGeo, this.materials.snare);
+            mesh.visible = false;
+            mesh.xb = { pointerEvents: 'none' };
+            this.scene.add(mesh);
+            this.rings.push({ mesh, life: 0, maxLife: 0.38 });
+          }
+        }
+
+        spawnHitBurst(pos, quat, drumId = 'snare') {
+          const mat = this.materials[drumId] || this.materials.snare;
+          // Spawn 20 sparks
+          for (let i = 0; i < 20; i++) {
+            const p = this.particles.find(item => !item.mesh.visible);
+            if (!p) break;
+            p.mesh.material = mat;
+            p.mesh.scale.setScalar(0.9 + Math.random() * 0.9);
+            p.mesh.position.copy(pos).add(
+              new THREE.Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.06, (Math.random() - 0.5) * 0.12)
+            );
+            p.vel.set(
+              (Math.random() - 0.5) * 2.2,
+              0.8 + Math.random() * 1.9,
+              (Math.random() - 0.5) * 2.2
+            );
+            p.life = 0;
+            p.maxLife = 0.42 + Math.random() * 0.15;
+            p.mesh.visible = true;
+          }
+
+          // Spawn shockwave ring aligned with drum head
+          const r = this.rings.find(item => !item.mesh.visible);
+          if (r) {
+            r.mesh.material = mat;
+            r.mesh.position.copy(pos);
+            r.mesh.quaternion.copy(quat);
+            r.mesh.rotateX(-Math.PI / 2);
+            r.mesh.scale.setScalar(0.8);
+            r.life = 0;
+            r.maxLife = 0.36;
+            r.mesh.visible = true;
+          }
+        }
+
+        spawnStrikeBeam(origin, targetPos, drumId = 'laser') {
+          const dir = new THREE.Vector3().subVectors(targetPos, origin).normalize();
+          const mat = this.materials[drumId] || this.materials.laser;
+          for (let i = 0; i < 10; i++) {
+            const p = this.particles.find(item => !item.mesh.visible);
+            if (!p) break;
+            p.mesh.material = mat;
+            p.mesh.scale.setScalar(0.55 + Math.random() * 0.45);
+            p.mesh.position.copy(origin).lerp(targetPos, i / 10);
+            p.vel.copy(dir).multiplyScalar(2.0 + Math.random() * 1.2);
+            p.life = 0;
+            p.maxLife = 0.18;
+            p.mesh.visible = true;
+          }
+        }
+
+        update(dt) {
+          for (const p of this.particles) {
+            if (!p.mesh.visible) continue;
+            p.life += dt;
+            if (p.life >= p.maxLife) {
+              p.mesh.visible = false;
+              continue;
+            }
+            p.vel.y -= 3.8 * dt; // Gravity arc
+            p.mesh.position.addScaledVector(p.vel, dt);
+            p.mesh.scale.multiplyScalar(0.95);
+          }
+
+          for (const r of this.rings) {
+            if (!r.mesh.visible) continue;
+            r.life += dt;
+            if (r.life >= r.maxLife) {
+              r.mesh.visible = false;
+              continue;
+            }
+            const progress = r.life / r.maxLife;
+            r.mesh.scale.setScalar(0.8 + progress * 1.65);
+          }
+        }
+
+        dispose() {
+          for (const p of this.particles) {
+            this.scene.remove(p.mesh);
+            p.mesh.geometry.dispose();
+          }
+          for (const r of this.rings) {
+            this.scene.remove(r.mesh);
+            r.mesh.geometry.dispose();
+          }
+          Object.values(this.materials).forEach(m => m.dispose());
+        }
+      }
+
+      // --- 3. DYNAMIC CANVAS TEXTURE GENERATOR FOR DRUM & CYMBAL HEADS ---
+      function createDrumHeadTexture(config, isHit = false) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        const cx = 256;
+        const cy = 256;
+
+        // Background fill
+        const grad = ctx.createRadialGradient(cx, cy, 18, cx, cy, 250);
+        if (config.isCymbal) {
+          grad.addColorStop(0, isHit ? '#ffffff' : config.glowColor);
+          grad.addColorStop(0.28, isHit ? config.glowColor : '#292514');
+          grad.addColorStop(0.75, '#171522');
+          grad.addColorStop(1, config.glowColor);
+        } else {
+          grad.addColorStop(0, isHit ? '#ffffff' : '#1e293b');
+          grad.addColorStop(0.55, isHit ? config.darkColor : '#0b0f1d');
+          grad.addColorStop(0.88, '#070a14');
+          grad.addColorStop(1, config.glowColor);
+        }
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Concentric Neon Acoustic Rings
+        const ringRadii = config.isCymbal ? [48, 95, 145, 195, 236] : [65, 145, 228];
+        ringRadii.forEach((r, idx) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.lineWidth = idx === ringRadii.length - 1 ? 18 : (isHit ? 8 : 5);
+          ctx.strokeStyle = isHit && idx === 0 ? '#ffffff' : config.glowColor;
+          ctx.globalAlpha = idx === ringRadii.length - 1 ? 1.0 : (isHit ? 0.9 : 0.48);
+          ctx.stroke();
+        });
+        ctx.globalAlpha = 1.0;
+
+        // Drum Label & Key Shortcut
+        ctx.fillStyle = isHit ? '#ffffff' : config.glowColor;
+        ctx.font = 'bold 46px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(config.name.toUpperCase(), cx, cy - 18);
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillText(`[KEY ${config.key}] • ${config.subtitle}`, cx, cy + 36);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+      }
+
+      // --- 4. DRUM KIT CONFIGURATION (5 DRUMS & CYMBALS) ---
+      const DRUM_CONFIGS = [
+        {
+          id: 'hihat',
+          name: 'Hi-Hat',
+          subtitle: 'CRISP SIZZLE',
+          key: '1',
+          isCymbal: true,
+          color: 0x39ff14,
+          glowColor: '#39ff14',
+          darkColor: '#14532d',
+          radius: 0.21,
+          height: 0.025,
+          hitRadius: 0.25,
+          pos: new THREE.Vector3(-0.66, 1.08, -0.84),
+          rot: new THREE.Euler(0.32, 0.18, -0.14)
+        },
+        {
+          id: 'snare',
+          name: 'Snare',
+          subtitle: 'SNAP & POP',
+          key: '2',
+          isCymbal: false,
+          color: 0x00f2fe,
+          glowColor: '#00f2fe',
+          darkColor: '#0c4a6e',
+          radius: 0.21,
+          height: 0.14,
+          hitRadius: 0.25,
+          pos: new THREE.Vector3(-0.34, 0.88, -0.78),
+          rot: new THREE.Euler(0.38, 0.08, -0.05)
+        },
+        {
+          id: 'kick',
+          name: 'Kick Bass',
+          subtitle: 'SUB THUMP',
+          key: '3',
+          isCymbal: false,
+          color: 0xff2a85,
+          glowColor: '#ff2a85',
+          darkColor: '#831843',
+          radius: 0.25,
+          height: 0.22,
+          hitRadius: 0.29,
+          pos: new THREE.Vector3(0.0, 0.75, -0.94),
+          rot: new THREE.Euler(0.55, 0.0, 0.0)
+        },
+        {
+          id: 'tom',
+          name: 'Rack Tom',
+          subtitle: 'DEEP PUNCH',
+          key: '4',
+          isCymbal: false,
+          color: 0xff7b00,
+          glowColor: '#ff7b00',
+          darkColor: '#7c2d12',
+          radius: 0.20,
+          height: 0.16,
+          hitRadius: 0.25,
+          pos: new THREE.Vector3(0.34, 0.92, -0.80),
+          rot: new THREE.Euler(0.38, -0.08, 0.05)
+        },
+        {
+          id: 'crash',
+          name: 'Crash',
+          subtitle: 'SHIMMERGOLD',
+          key: '5',
+          isCymbal: true,
+          color: 0xfacc15,
+          glowColor: '#facc15',
+          darkColor: '#713f12',
+          radius: 0.23,
+          height: 0.025,
+          hitRadius: 0.27,
+          pos: new THREE.Vector3(0.66, 1.12, -0.86),
+          rot: new THREE.Euler(0.34, -0.18, 0.14)
+        }
+      ];
+
+      // Pre-loaded Neon Synthwave Demo Beat so Playback works immediately out of the box
+      const DEMO_BEAT = [
+        { time: 0.00, drumId: 'kick', velocity: 1.15 },
+        { time: 0.00, drumId: 'crash', velocity: 1.10 },
+        { time: 0.25, drumId: 'hihat', velocity: 0.85 },
+        { time: 0.50, drumId: 'snare', velocity: 1.10 },
+        { time: 0.50, drumId: 'hihat', velocity: 0.90 },
+        { time: 0.75, drumId: 'hihat', velocity: 0.85 },
+        { time: 1.00, drumId: 'kick', velocity: 1.10 },
+        { time: 1.12, drumId: 'kick', velocity: 0.95 },
+        { time: 1.25, drumId: 'hihat', velocity: 0.85 },
+        { time: 1.50, drumId: 'snare', velocity: 1.15 },
+        { time: 1.75, drumId: 'tom', velocity: 1.05 },
+        { time: 1.88, drumId: 'tom', velocity: 1.15 }
+      ];
+
+      // --- 5. MAIN WEBXR DRUM KIT SCRIPT ---
+      class DrumKitScript extends xb.Script {
+        constructor() {
+          super();
+          this.drums = [];
+          this.drumById = new Map();
+          this.stageBars = [];
+          this.sticks = [];
+
+          // Beat Recorder & Playback State
+          this.isRecording = false;
+          this.isPlayingBack = false;
+          this.isTransitioning = false;
+          this.recordedEvents = [...DEMO_BEAT];
+          this.isCustomRecording = false;
+          this.recordStartTime = 0;
+          this.loopDuration = 2.0;
+          this.playbackTime = 0;
+          this.playbackIndex = 0;
+          this.totalHits = 0;
+
+          // Raycasting & Input Helpers
+          this.raycaster = new THREE.Raycaster();
+          this.pointer = new THREE.Vector2();
+          this.tempMatrix = new THREE.Matrix4();

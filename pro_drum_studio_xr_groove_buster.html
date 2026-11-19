@@ -1,0 +1,2970 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pro Drum Studio XR: Muscle Memory & Groove Trainer</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Space Grotesk, Inter, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"Space Grotesk"', 'sans-serif'],
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            studio: {
+              bg: '#090B10',
+              panel: '#12151E',
+              amber: '#F59E0B',
+              cyan: '#06B6D4',
+              magenta: '#EC4899',
+              emerald: '#10B981',
+              crimson: '#EF4444'
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #090B10;
+      color: #F8FAFC;
+      font-family: 'Inter', sans-serif;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+    .studio-glass {
+      background: rgba(15, 18, 27, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.72);
+    }
+    .studio-glass-amber {
+      background: rgba(23, 19, 14, 0.86);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(245, 158, 11, 0.38);
+      box-shadow: 0 0 28px -4px rgba(245, 158, 11, 0.22);
+    }
+    .studio-btn {
+      transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .studio-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      filter: brightness(1.12);
+    }
+    .studio-btn:active:not(:disabled) {
+      transform: translateY(1px) scale(0.97);
+    }
+    .drum-pad-btn {
+      transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.08s ease, border-color 0.08s ease;
+    }
+    .drum-pad-btn.active-hit-L {
+      transform: scale(0.92);
+      border-color: #06B6D4 !important;
+      background: rgba(6, 182, 212, 0.32) !important;
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.65);
+    }
+    .drum-pad-btn.active-hit-R {
+      transform: scale(0.92);
+      border-color: #F59E0B !important;
+      background: rgba(245, 158, 11, 0.32) !important;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.65);
+    }
+    .drum-pad-btn.active-hit-KICK {
+      transform: scale(0.92);
+      border-color: #EC4899 !important;
+      background: rgba(236, 72, 153, 0.34) !important;
+      box-shadow: 0 0 22px rgba(236, 72, 153, 0.7);
+    }
+    @keyframes pulse-urgent {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+      50% { transform: scale(1.03); box-shadow: 0 0 22px 4px rgba(239, 68, 68, 0.45); }
+    }
+    .urgent-pulse {
+      animation: pulse-urgent 0.48s infinite ease-in-out;
+    }
+    @keyframes float-up-fade {
+      0% { opacity: 1; transform: translate(-50%, 0) scale(0.88); }
+      20% { opacity: 1; transform: translate(-50%, -14px) scale(1.06); }
+      100% { opacity: 0; transform: translate(-50%, -48px) scale(0.95); }
+    }
+    .floating-feedback {
+      position: fixed;
+      pointer-events: none;
+      z-index: 60;
+      animation: float-up-fade 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    /* Custom compact range slider */
+    input[type=range] {
+      accent-color: #F59E0B;
+    }
+  </style>
+</head>
+<body class="select-none">
+
+  <!-- 3D WebGL / WebXR Viewport Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Floating 2D Score/Timing Pop-up Layer -->
+  <div id="feedback-layer" class="fixed inset-0 pointer-events-none z-50 overflow-hidden"></div>
+
+  <!-- Main HUD Overlay -->
+  <div class="fixed inset-0 pointer-events-none z-20 flex flex-col justify-between p-2 sm:p-3.5 md:p-4">
+
+    <!-- TOP BAR: Studio Rack Header + Telemetry + Controls -->
+    <div class="w-full max-w-7xl mx-auto flex flex-col gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+
+        <!-- Brand & Live Metronome Pulse -->
+        <div class="studio-glass rounded-xl px-3 py-1.5 flex items-center gap-2.5 pointer-events-auto">
+          <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 via-orange-500 to-pink-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
+            <svg class="w-5 h-5 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="14" r="8" />
+              <path d="M12 6V2M4 4l5 5M20 4l-5 5" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="font-display font-bold text-xs sm:text-sm md:text-base tracking-tight text-white uppercase">Pro Drum Studio <span class="text-amber-400">XR</span></h1>
+              <span id="status-badge" class="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">READY</span>
+            </div>
+            <div class="flex items-center gap-2 mt-0.5">
+              <p class="text-[10px] text-slate-400 hidden sm:block">Muscle Memory &amp; Spatial Sticking Trainer</p>
+              <!-- 4-Beat Visual Metronome LEDs -->
+              <div class="flex items-center gap-1 bg-slate-900/90 px-1.5 py-0.5 rounded border border-white/10" title="4/4 Beat Pulse">
+                <span id="beat-led-0" class="w-2 h-2 rounded-full bg-slate-700 transition-all"></span>
+                <span id="beat-led-1" class="w-2 h-2 rounded-full bg-slate-700 transition-all"></span>
+                <span id="beat-led-2" class="w-2 h-2 rounded-full bg-slate-700 transition-all"></span>
+                <span id="beat-led-3" class="w-2 h-2 rounded-full bg-slate-700 transition-all"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center Telemetry: Score, Streak, Timing Offset, 30s Timer -->
+        <div class="studio-glass rounded-xl px-3 py-1.5 flex items-center gap-3 sm:gap-5 pointer-events-auto">
+          <div class="flex flex-col">
+            <span class="text-[9px] font-mono uppercase tracking-widest text-slate-400">SCORE</span>
+            <span id="hud-score" class="font-mono font-extrabold text-base sm:text-xl text-white tabular-nums">0</span>
+          </div>
+
+          <div class="h-6 w-px bg-white/10"></div>
+
+          <div class="flex flex-col">
+            <span class="text-[9px] font-mono uppercase tracking-widest text-slate-400">STREAK / ACC</span>
+            <div class="flex items-center gap-1">
+              <span id="hud-combo" class="font-mono font-bold text-xs sm:text-base text-amber-400 tabular-nums">0🔥</span>
+              <span id="hud-accuracy" class="text-[10px] font-mono text-emerald-400">(100%)</span>
+            </div>
+          </div>
+
+          <div class="h-6 w-px bg-white/10 hidden md:block"></div>
+
+          <!-- Live Timing Precision Offset -->
+          <div class="hidden md:flex flex-col min-w-[78px]">
+            <span class="text-[9px] font-mono uppercase tracking-widest text-slate-400">TIMING</span>
+            <span id="hud-timing" class="font-mono font-bold text-xs text-cyan-300 tabular-nums">±0 ms</span>
+          </div>
+
+          <div class="h-6 w-px bg-white/10"></div>
+
+          <!-- 30s Drill Timer -->
+          <div id="timer-box" class="flex flex-col min-w-[74px] sm:min-w-[88px] rounded-lg px-2 py-0.5 transition-colors">
+            <div class="flex items-center justify-between">
+              <span id="timer-label" class="text-[9px] font-mono uppercase tracking-widest text-slate-400">30S DRILL</span>
+              <span id="timer-warn-dot" class="hidden w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+            </div>
+            <span id="hud-timer" class="font-mono font-extrabold text-base sm:text-xl text-cyan-400 tabular-nums">30.0s</span>
+          </div>
+        </div>
+
+        <!-- Primary Action Buttons -->
+        <div class="studio-glass rounded-xl p-1.5 flex items-center flex-wrap gap-1.5 pointer-events-auto">
+          <button id="btn-start" class="studio-btn px-3 py-1.5 rounded-lg font-display font-bold text-xs sm:text-sm bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md shadow-amber-500/20 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+            <span id="btn-start-label">Start 30s Drill</span>
+          </button>
+
+          <button id="btn-pause" disabled class="studio-btn px-2.5 py-1.5 rounded-lg font-medium text-xs bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 border border-white/10 disabled:opacity-40 disabled:pointer-events-none">
+            <span id="btn-pause-label">Pause</span>
+          </button>
+
+          <button id="btn-reset" class="studio-btn px-2.5 py-1.5 rounded-lg font-medium text-xs bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 border border-white/10">
+            Reset
+          </button>
+
+          <button id="btn-vr" class="studio-btn px-2.5 py-1.5 rounded-lg font-display font-bold text-xs bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/40 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            <span id="btn-vr-label">Enter VR</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Timer Progress Ribbon -->
+      <div class="w-full h-1.5 bg-slate-900/90 rounded-full overflow-hidden border border-white/5">
+        <div id="timer-progress" class="h-full w-full bg-gradient-to-r from-cyan-400 via-amber-400 to-pink-500 transition-all duration-75"></div>
+      </div>
+
+      <!-- SECOND ROW: Muscle-Memory Pattern Console, Mode Switcher, BPM & Acoustic Kit Preset -->
+      <div class="studio-glass-amber rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 max-w-6xl mx-auto w-full pointer-events-auto">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <!-- Mode & Pattern Selector -->
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Game Mode Selector -->
+            <div class="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-white/10 text-[11px] font-mono">
+              <button data-mode="DRILL_30" class="mode-tab-btn px-2.5 py-1 rounded-md bg-amber-500 text-slate-950 font-bold">30s Drill</button>
+              <button data-mode="LOOP_TRAINER" class="mode-tab-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white">Loop Trainer</button>
+              <button data-mode="FREE_PLAY" class="mode-tab-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white">Free Jam</button>
+            </div>
+
+            <!-- 36-Pattern Muscle Memory Dropdown -->
+            <select id="pattern-select" class="bg-slate-900/95 text-white text-xs font-display font-semibold px-2.5 py-1.5 rounded-lg border border-amber-400/40 focus:outline-none focus:border-amber-400 max-w-[230px] sm:max-w-xs">
+              <!-- Populated dynamically with all 36 patterns -->
+            </select>
+
+            <!-- Next Pattern Quick Cycle Button -->
+            <button id="btn-next-pattern" class="studio-btn px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-400/30 text-xs font-mono" title="Cycle to Next Pattern">
+              Next ⏭
+            </button>
+          </div>
+
+          <!-- Right Controls: Fall Speed / BPM + Acoustic Mix Preset + Live VU Meter -->
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Tempo / Note Speed Control -->
+            <div class="flex items-center gap-2 bg-slate-950/70 px-2.5 py-1 rounded-lg border border-white/10">
+              <span class="text-[10px] font-mono text-slate-400 uppercase">TEMPO</span>
+              <input id="bpm-slider" type="range" min="65" max="145" value="95" class="w-16 sm:w-20 h-1.5 cursor-pointer" />
+              <span id="bpm-display" class="text-xs font-mono font-bold text-amber-400 w-14 text-right">95 BPM</span>
+            </div>
+
+            <!-- Kit Sound Tuning Preset -->
+            <div class="flex items-center gap-1.5 bg-slate-950/70 px-2 py-1 rounded-lg border border-white/10">
+              <span class="text-[10px] font-mono text-slate-400 uppercase hidden sm:inline">KIT</span>
+              <select id="kit-preset-select" class="bg-transparent text-cyan-300 text-xs font-mono font-semibold focus:outline-none cursor-pointer">
+                <option value="maple" class="bg-slate-900 text-white">Studio Maple</option>
+                <option value="dry" class="bg-slate-900 text-white">Dry Funk Pocket</option>
+                <option value="arena" class="bg-slate-900 text-white">Arena Rock Room</option>
+              </select>
+            </div>
+
+            <!-- 8-Channel Live Audio VU Meter -->
+            <div id="vu-meter" class="hidden lg:flex items-end gap-0.5 h-5 bg-slate-950/90 px-2 py-1 rounded border border-white/10" title="8-Channel Drum Synth Output">
+              <div data-vu="crash" class="w-1.5 bg-yellow-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="hihat" class="w-1.5 bg-emerald-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="openhat" class="w-1.5 bg-teal-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="snare" class="w-1.5 bg-cyan-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="hightom" class="w-1.5 bg-purple-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="kick" class="w-1.5 bg-pink-500 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="midtom" class="w-1.5 bg-indigo-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="floortom" class="w-1.5 bg-rose-400 rounded-t transition-all duration-75" style="height:20%"></div>
+              <div data-vu="ride" class="w-1.5 bg-orange-400 rounded-t transition-all duration-75" style="height:20%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pattern Sticking Guide Banner -->
+        <div class="mt-1.5 pt-1.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span id="pattern-category-tag" class="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">RUDIMENT</span>
+            <span id="pattern-sticking-preview" class="font-mono font-bold text-xs sm:text-sm text-white tracking-wide">
+              Sticking: <span class="text-cyan-400">L</span> = Left Stick • <span class="text-amber-400">R</span> = Right Stick • <span class="text-pink-400">KICK</span> = Foot Pedal
+            </span>
+          </div>
+
+          <!-- Next Upcoming Note Prompt Pill -->
+          <div class="flex items-center gap-2">
+            <span id="next-strike-pill" class="text-xs font-mono font-extrabold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-400/40">
+              STRIKE CUES AS THEY ENTER THE GLOWING DRUMHEAD RINGS (+50 HIT / -10 WRONG / -30 FLOOR MISS)
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM BAR: Ergonomic Bilateral Two-Handed Muscle-Memory Drum Trigger Dock -->
+    <div class="w-full max-w-6xl mx-auto flex flex-col gap-1.5 items-center">
+      <div class="studio-glass rounded-2xl p-2 sm:px-3 sm:py-2 w-full pointer-events-auto">
+        <div class="flex flex-wrap items-center justify-between mb-1.5 px-1 gap-1">
+          <div class="flex items-center gap-3 text-[10px] sm:text-xs font-mono">
+            <span class="flex items-center gap-1 text-cyan-300 font-bold">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> LEFT HAND: [E] [S] [D] [F] [R]
+            </span>
+            <span class="flex items-center gap-1 text-pink-400 font-bold">
+              <span class="w-2 h-2 rounded-full bg-pink-500"></span> FOOT: [SPACE]
+            </span>
+            <span class="flex items-center gap-1 text-amber-300 font-bold">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span> RIGHT HAND: [J] [K] [U] [I] [L]
+            </span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-400 hidden xl:inline">
+            VR Quest 3: Swing 3D drumsticks directly into drumheads or squeeze triggers • Desktop: Use Two-Handed Keys or Click 3D Drums
+          </span>
+        </div>
+
+        <!-- Bilateral Anatomical Pad Grid (Left Hand Side -> Center Kick -> Right Hand Side) -->
+        <div class="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+          <!-- LEFT HAND PADS -->
+          <button data-drum="crash" data-hand="L" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-cyan-500/30 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-cyan-300 font-bold">[E] L-HAND</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">18" Crash</span>
+          </button>
+
+          <button data-drum="openhat" data-hand="L" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-cyan-500/30 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-cyan-300 font-bold">[S] L-HAND</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">Open Hat</span>
+          </button>
+
+          <button data-drum="hihat" data-hand="L" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-cyan-500/30 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-cyan-300 font-bold">[D] L-HAT</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">Closed Hat</span>
+          </button>
+
+          <button data-drum="snare" data-hand="L" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-cyan-400/50 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-cyan-300 font-extrabold">[F] L-STICK</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">14" Snare L</span>
+          </button>
+
+          <button data-drum="hightom" data-hand="L" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-cyan-500/30 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-cyan-300 font-bold">[R] L-HAND</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">10" Hi Tom</span>
+          </button>
+
+          <!-- FOOT PEDAL KICK -->
+          <button data-drum="kick" data-hand="KICK" class="drum-pad-btn rounded-xl bg-pink-950/40 hover:bg-pink-900/50 border border-pink-500/50 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-pink-400 font-extrabold">[SPACE] FOOT</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">22" Kick Sub</span>
+          </button>
+
+          <!-- RIGHT HAND PADS -->
+          <button data-drum="snare" data-hand="R" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-amber-400/50 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-amber-400 font-extrabold">[J] R-STICK</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">14" Snare R</span>
+          </button>
+
+          <button data-drum="hihat" data-hand="R" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-amber-500/30 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-amber-400 font-bold">[K] R-HAT</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">Closed Hat</span>
+          </button>
+
+          <button data-drum="midtom" data-hand="R" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-amber-500/30 p-1.5 sm:p-2 flex flex-col items-center text-center">
+            <span class="text-[9px] sm:text-[10px] font-mono text-amber-400 font-bold">[U] R-HAND</span>
+            <span class="text-[11px] sm:text-xs font-display font-bold text-white mt-0.5">12" Mid Tom</span>
+          </button>
+
+          <div class="grid grid-cols-2 gap-1">
+            <button data-drum="floortom" data-hand="R" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-amber-500/30 p-1 flex flex-col items-center justify-center text-center">
+              <span class="text-[8px] font-mono text-amber-400 font-bold">[L] R</span>
+              <span class="text-[10px] font-display font-bold text-white">16" Flr</span>
+            </button>
+            <button data-drum="ride" data-hand="R" class="drum-pad-btn rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-amber-500/30 p-1 flex flex-col items-center justify-center text-center">
+              <span class="text-[8px] font-mono text-amber-400 font-bold">[I] R</span>
+              <span class="text-[10px] font-display font-bold text-white">20" Ride</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- END GAME / MUSCLE MEMORY SESSION TELEMETRY MODAL -->
+  <div id="end-modal" class="hidden fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="studio-glass-amber rounded-3xl max-w-xl w-full p-6 sm:p-7 border border-amber-500/40 text-center relative overflow-hidden">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-mono uppercase mb-2">
+        <span>30-Second Muscle Memory Take Complete</span>
+      </div>
+
+      <h2 id="end-title" class="font-display font-extrabold text-2xl sm:text-3xl text-white">STUDIO GROOVE ANALYSIS</h2>
+      <p id="end-subtitle" class="text-xs sm:text-sm text-slate-300 mt-1">Your physical sticking coordination, timing precision &amp; dynamic pocket report:</p>
+
+      <!-- Big Final Score -->
+      <div class="my-4 py-3.5 px-6 rounded-2xl bg-slate-900/90 border border-white/10">
+        <span class="text-[10px] font-mono uppercase tracking-widest text-slate-400">FINAL STUDIO SCORE</span>
+        <div id="end-score" class="font-mono font-extrabold text-4xl sm:text-5xl text-amber-400 mt-0.5">0</div>
+        <div id="end-rank" class="text-xs font-mono font-semibold text-cyan-300 mt-1">RANK: SESSION PRO</div>
+      </div>
+
+      <!-- Detailed Metrics Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-left mb-5">
+        <div class="rounded-xl bg-slate-900/75 border border-white/10 p-2.5">
+          <div class="text-[10px] font-mono text-slate-400 uppercase">Pocket Accuracy</div>
+          <div id="end-accuracy" class="font-mono font-bold text-base sm:text-lg text-emerald-400 mt-0.5">100%</div>
+        </div>
+        <div class="rounded-xl bg-slate-900/75 border border-white/10 p-2.5">
+          <div class="text-[10px] font-mono text-slate-400 uppercase">Avg Timing Offset</div>
+          <div id="end-timing" class="font-mono font-bold text-base sm:text-lg text-cyan-300 mt-0.5">±18 ms</div>
+        </div>
+        <div class="rounded-xl bg-slate-900/75 border border-white/10 p-2.5">
+          <div class="text-[10px] font-mono text-slate-400 uppercase">Max Streak</div>
+          <div id="end-streak" class="font-mono font-bold text-base sm:text-lg text-amber-400 mt-0.5">0 🔥</div>
+        </div>
+        <div class="rounded-xl bg-slate-900/75 border border-white/10 p-2.5">
+          <div class="text-[10px] font-mono text-slate-400 uppercase">Correct / Misfires / Drops</div>
+          <div id="end-breakdown" class="font-mono font-bold text-sm sm:text-base text-white mt-0.5">0 / 0 / 0</div>
+        </div>
+        <div class="rounded-xl bg-slate-900/75 border border-white/10 p-2.5">
+          <div class="text-[10px] font-mono text-slate-400 uppercase">Limb Balance (L / R / Kick)</div>
+          <div id="end-limbs" class="font-mono font-bold text-sm sm:text-base text-pink-300 mt-0.5">0L • 0R • 0K</div>
+        </div>
+        <div class="rounded-xl bg-slate-900/75 border border-white/10 p-2.5">
+          <div class="text-[10px] font-mono text-slate-400 uppercase">Time Taken</div>
+          <div id="end-time" class="font-mono font-bold text-base sm:text-lg text-slate-200 mt-0.5">30.0s</div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-2.5 justify-center">
+        <button id="btn-play-again" class="studio-btn w-full sm:w-auto flex-1 py-3 px-5 rounded-xl font-display font-bold text-sm bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-lg shadow-amber-500/25">
+          Run Another 30s Drill
+        </button>
+        <button id="btn-loop-practice" class="studio-btn w-full sm:w-auto py-3 px-4 rounded-xl font-display font-semibold text-sm bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/40">
+          Endless Loop Trainer
+        </button>
+        <button id="btn-free-play" class="studio-btn w-full sm:w-auto py-3 px-4 rounded-xl font-display font-semibold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10">
+          Free Studio Jam
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /********************************************************************
+     * 1. 36 AUTHENTIC DRUMMING MUSCLE-MEMORY PATTERNS & RUDIMENT DRILLS
+     * Each step defines:
+     *   d: target drum piece ('kick','snare','hihat','openhat','hightom','midtom','floortom','crash','ride')
+     *   h: physical limb sticking ('L' = Left Hand, 'R' = Right Hand, 'KICK' = Right Foot)
+     *   sub: beat subdivision duration (1.0 = quarter note, 0.5 = 8th note, 0.25 = 16th note, 0.333 = triplet)
+     ********************************************************************/
+    const MUSCLE_PATTERNS = [
+      // --- CATEGORY 1: ESSENTIAL STICK RUDIMENTS (12 Patterns) ---
+      {
+        id: "rud_single_stroke",
+        category: "RUDIMENT",
+        name: "01. Single Stroke Roll (R L R L)",
+        stickingText: "R - L - R - L - R - L - R - L (Snare Center)",
+        steps: [
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_single_paradiddle",
+        category: "RUDIMENT",
+        name: "02. Single Paradiddle (R L R R  L R L L)",
+        stickingText: "R L R R (HiTom/Snare) • L R L L (Snare/FlrTom)",
+        steps: [
+          { d: 'midtom', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'hightom', h: 'L', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_double_stroke",
+        category: "RUDIMENT",
+        name: "03. Double Stroke Open Roll (R R  L L)",
+        stickingText: "R - R - L - L - R - R - L - L (Rebound Control)",
+        steps: [
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'midtom', h: 'R', sub: 0.5 }, { d: 'midtom', h: 'R', sub: 0.5 },
+          { d: 'hightom', h: 'L', sub: 0.5 }, { d: 'hightom', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_double_paradiddle",
+        category: "RUDIMENT",
+        name: "04. Double Paradiddle (R L R L R R / L R L R L L)",
+        stickingText: "6/8 Feel: R L R L R R • L R L R L L",
+        steps: [
+          { d: 'ride', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'ride', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'floortom', h: 'R', sub: 0.5 },
+          { d: 'hihat', h: 'L', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'hihat', h: 'L', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'hightom', h: 'L', sub: 0.5 }, { d: 'hightom', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_paradiddle_diddle",
+        category: "RUDIMENT",
+        name: "05. Paradiddle-Diddle (R L R R L L)",
+        stickingText: "R L R R L L across Toms & Snare",
+        steps: [
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'hightom', h: 'L', sub: 0.5 },
+          { d: 'midtom', h: 'R', sub: 0.5 }, { d: 'midtom', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_inverted_paradiddle",
+        category: "RUDIMENT",
+        name: "06. Inverted Paradiddle (R L L R  L R R L)",
+        stickingText: "R L L R • L R R L (Inward Ghost Pocket)",
+        steps: [
+          { d: 'ride', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'midtom', h: 'R', sub: 0.5 },
+          { d: 'hihat', h: 'L', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'hightom', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_six_stroke_roll",
+        category: "RUDIMENT",
+        name: "07. Six-Stroke Roll (R l l r r L)",
+        stickingText: "Accent R - L L - R R - Accent L",
+        steps: [
+          { d: 'floortom', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.35 }, { d: 'snare', h: 'L', sub: 0.35 },
+          { d: 'snare', h: 'R', sub: 0.35 }, { d: 'snare', h: 'R', sub: 0.35 },
+          { d: 'crash', h: 'L', sub: 0.6 }
+        ]
+      },
+      {
+        id: "rud_flam_tap",
+        category: "RUDIMENT",
+        name: "08. Flam Accent & Tap Coordination",
+        stickingText: "lR - R - rL - L around Snare & Toms",
+        steps: [
+          { d: 'hightom', h: 'L', sub: 0.35 }, { d: 'snare', h: 'R', sub: 0.5 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'midtom', h: 'R', sub: 0.35 }, { d: 'snare', h: 'L', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "rud_swiss_army",
+        category: "RUDIMENT",
+        name: "09. Swiss Army Triplet (R R L  R R L)",
+        stickingText: "Right Lead Triplet Flow: R - R - L",
+        steps: [
+          { d: 'ride', h: 'R', sub: 0.45 }, { d: 'snare', h: 'R', sub: 0.45 }, { d: 'hightom', h: 'L', sub: 0.45 },
+          { d: 'floortom', h: 'R', sub: 0.45 }, { d: 'snare', h: 'R', sub: 0.45 }, { d: 'hihat', h: 'L', sub: 0.45 }
+        ]
+      },
+      {
+        id: "rud_herta_sweep",
+        category: "RUDIMENT",
+        name: "10. Herta Sweep Around Kit (R L R  L)",
+        stickingText: "Fast Burst R-L-R followed by space L",
+        steps: [
+          { d: 'hightom', h: 'R', sub: 0.35 }, { d: 'hightom', h: 'L', sub: 0.35 },
+          { d: 'midtom', h: 'R', sub: 0.6 }, { d: 'floortom', h: 'L', sub: 0.6 },
+          { d: 'snare', h: 'R', sub: 0.35 }, { d: 'snare', h: 'L', sub: 0.35 },
+          { d: 'kick', h: 'KICK', sub: 0.6 }, { d: 'crash', h: 'R', sub: 0.6 }
+        ]
+      },
+      {
+        id: "rud_five_stroke",
+        category: "RUDIMENT",
+        name: "11. Five-Stroke Roll (R R L L R / L L R R L)",
+        stickingText: "R R L L -> Accent R  |  L L R R -> Accent L",
+        steps: [
+          { d: 'snare', h: 'R', sub: 0.4 }, { d: 'snare', h: 'R', sub: 0.4 },
+          { d: 'snare', h: 'L', sub: 0.4 }, { d: 'snare', h: 'L', sub: 0.4 },
+          { d: 'floortom', h: 'R', sub: 0.7 },
+          { d: 'snare', h: 'L', sub: 0.4 }, { d: 'snare', h: 'L', sub: 0.4 },
+          { d: 'snare', h: 'R', sub: 0.4 }, { d: 'snare', h: 'R', sub: 0.4 },
+          { d: 'hightom', h: 'L', sub: 0.7 }
+        ]
+      },
+      {
+        id: "rud_paradiddle_orchestration",
+        category: "RUDIMENT",
+        name: "12. Groove Paradiddle (Hat/Snare/Kick Lock)",
+        stickingText: "R(Hat) L(Snare) R(Hat) R(Hat) + Kick Anchor",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'hihat', h: 'R', sub: 0.45 },
+          { d: 'snare', h: 'L', sub: 0.45 }, { d: 'hihat', h: 'R', sub: 0.45 },
+          { d: 'hihat', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.55 },
+          { d: 'hihat', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 },
+          { d: 'snare', h: 'L', sub: 0.45 }
+        ]
+      },
+
+      // --- CATEGORY 2: FOUNDATIONAL POCKET GROOVES (12 Patterns) ---
+      {
+        id: "grv_rock_backbeat",
+        category: "POCKET GROOVE",
+        name: "13. Classic 4/4 Studio Rock Backbeat",
+        stickingText: "Beat 1&3: Kick • Beat 2&4: Left Snare • 8th Right Hats",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.55 }, { d: 'hihat', h: 'R', sub: 0.55 },
+          { d: 'snare', h: 'L', sub: 0.55 }, { d: 'hihat', h: 'R', sub: 0.55 },
+          { d: 'kick', h: 'KICK', sub: 0.55 }, { d: 'kick', h: 'KICK', sub: 0.55 },
+          { d: 'snare', h: 'L', sub: 0.55 }, { d: 'openhat', h: 'L', sub: 0.55 }
+        ]
+      },
+      {
+        id: "grv_four_on_floor",
+        category: "POCKET GROOVE",
+        name: "14. Disco / House Four-on-the-Floor + Bark",
+        stickingText: "Steady Kick Pulse + Upbeat Open Hi-Hat Bark + Choke",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'openhat', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'hihat', h: 'L', sub: 0.5 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'openhat', h: 'L', sub: 0.5 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'hihat', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "grv_funk_linear",
+        category: "POCKET GROOVE",
+        name: "15. Linear Funk Pocket (No Limbs Together)",
+        stickingText: "K - R(Hat) - L(Snare) - R(Hat) - K - K - L(Snare) - OpenHat",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'hihat', h: 'R', sub: 0.45 },
+          { d: 'snare', h: 'L', sub: 0.45 }, { d: 'hihat', h: 'R', sub: 0.45 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'snare', h: 'L', sub: 0.45 }, { d: 'openhat', h: 'L', sub: 0.55 }
+        ]
+      },
+      {
+        id: "grv_purdie_shuffle",
+        category: "POCKET GROOVE",
+        name: "16. Half-Time Purdie / Rosanna Shuffle",
+        stickingText: "Triplet Hi-Hat Swing -> Ghost L Snare -> Beat 3 Backbeat",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'hihat', h: 'R', sub: 0.4 }, { d: 'snare', h: 'L', sub: 0.4 },
+          { d: 'hihat', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.6 },
+          { d: 'hihat', h: 'R', sub: 0.4 }, { d: 'kick', h: 'KICK', sub: 0.4 }, { d: 'snare', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "grv_boom_bap",
+        category: "POCKET GROOVE",
+        name: "17. J-Dilla / 90s Golden Era Boom-Bap",
+        stickingText: "Syncopated Double Kick + Cracking Snare + Open Hat Lift",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.6 }, { d: 'hihat', h: 'R', sub: 0.45 },
+          { d: 'snare', h: 'L', sub: 0.6 }, { d: 'hihat', h: 'R', sub: 0.45 },
+          { d: 'hihat', h: 'R', sub: 0.4 }, { d: 'kick', h: 'KICK', sub: 0.4 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.6 }
+        ]
+      },
+      {
+        id: "grv_two_handed_16ths",
+        category: "POCKET GROOVE",
+        name: "18. Two-Handed 16th-Note Hi-Hat Funk",
+        stickingText: "R-L-R-L on Hi-Hat with Right Hand dropping to Snare on 2 & 4",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.42 }, { d: 'hihat', h: 'R', sub: 0.42 },
+          { d: 'hihat', h: 'L', sub: 0.42 }, { d: 'hihat', h: 'R', sub: 0.42 },
+          { d: 'snare', h: 'R', sub: 0.5 }, { d: 'hihat', h: 'L', sub: 0.42 },
+          { d: 'hihat', h: 'R', sub: 0.42 }, { d: 'openhat', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "grv_motown_soul",
+        category: "POCKET GROOVE",
+        name: "19. Motown Four-Beat Snare Drive",
+        stickingText: "Snare on All 4 Quarter Beats with Syncopated Kick & Ride",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'ride', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'ride', h: 'R', sub: 0.5 }
+        ]
+      },
+      {
+        id: "grv_reggae_one_drop",
+        category: "POCKET GROOVE",
+        name: "20. Jamaican One-Drop Reggae Pocket",
+        stickingText: "Empty Beat 1 • Hi-Hat Skank • Beat 3 Kick + Snare Drop",
+        steps: [
+          { d: 'hihat', h: 'L', sub: 0.55 }, { d: 'hihat', h: 'R', sub: 0.55 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.6 },
+          { d: 'hihat', h: 'R', sub: 0.55 }, { d: 'openhat', h: 'L', sub: 0.55 }
+        ]
+      },
+      {
+        id: "grv_jazz_spang_a_lang",
+        category: "POCKET GROOVE",
+        name: "21. Jazz Swing Ride (Spang-a-Lang + 2 & 4 Hat)",
+        stickingText: "Right Hand Swing Ride + Left Hand Hi-Hat Chick on 2 & 4",
+        steps: [
+          { d: 'ride', h: 'R', sub: 0.65 },
+          { d: 'hihat', h: 'L', sub: 0.45 }, { d: 'ride', h: 'R', sub: 0.45 },
+          { d: 'ride', h: 'R', sub: 0.65 },
+          { d: 'hihat', h: 'L', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 }
+        ]
+      },
+      {
+        id: "grv_bossa_nova",
+        category: "POCKET GROOVE",
+        name: "22. Brazilian Bossa Nova Cross-Kit Ostinato",
+        stickingText: "Kick/FloorTom Pulse + Syncopated Left Snare Rim-Click",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'ride', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'floortom', h: 'R', sub: 0.5 }
+        ]
+      },
+      {
+        id: "grv_songo_latin",
+        category: "POCKET GROOVE",
+        name: "23. Afro-Cuban Songo Independence",
+        stickingText: "Ride Bell + Left Snare/Tom Ghosting + Tumbao Kick",
+        steps: [
+          { d: 'ride', h: 'R', sub: 0.5 }, { d: 'hightom', h: 'L', sub: 0.5 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'ride', h: 'R', sub: 0.5 }, { d: 'floortom', h: 'R', sub: 0.5 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "grv_chorus_ride_wash",
+        category: "POCKET GROOVE",
+        name: "24. Arena Chorus Crash-Ride Power Groove",
+        stickingText: "Crash Downbeat -> Ride Bell Timekeeping -> Heavy Backbeat",
+        steps: [
+          { d: 'crash', h: 'L', sub: 0.55 }, { d: 'kick', h: 'KICK', sub: 0.55 },
+          { d: 'snare', h: 'L', sub: 0.55 }, { d: 'ride', h: 'R', sub: 0.55 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'ride', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.55 }, { d: 'floortom', h: 'R', sub: 0.55 }
+        ]
+      },
+
+      // --- CATEGORY 3: CROSS-KIT FILLS & COORDINATION DRILLS (12 Patterns) ---
+      {
+        id: "fill_descending_toms",
+        category: "CROSS-KIT FILL",
+        name: "25. Around-the-World 16th Tom Cascade",
+        stickingText: "Snare(R-L) -> HiTom(R-L) -> MidTom(R-L) -> FlrTom(R-L) -> Crash",
+        steps: [
+          { d: 'snare', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 },
+          { d: 'hightom', h: 'R', sub: 0.45 }, { d: 'hightom', h: 'L', sub: 0.45 },
+          { d: 'midtom', h: 'R', sub: 0.45 }, { d: 'midtom', h: 'L', sub: 0.45 },
+          { d: 'floortom', h: 'R', sub: 0.45 }, { d: 'floortom', h: 'L', sub: 0.45 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'crash', h: 'L', sub: 0.65 }
+        ]
+      },
+      {
+        id: "fill_bonham_triplets",
+        category: "CROSS-KIT FILL",
+        name: "26. John Bonham Hand-Foot Triplets (R - L - KICK)",
+        stickingText: "R(Tom) - L(Snare/Tom) - KICK(Foot) Triplet Power Flow",
+        steps: [
+          { d: 'hightom', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'midtom', h: 'R', sub: 0.45 }, { d: 'hightom', h: 'L', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'floortom', h: 'R', sub: 0.45 }, { d: 'midtom', h: 'L', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'crash', h: 'R', sub: 0.65 }
+        ]
+      },
+      {
+        id: "fill_pat_boone",
+        category: "CROSS-KIT FILL",
+        name: "27. Classic 'Pat Boone, Debbie Boone' Rock Fill",
+        stickingText: "Snare — HiTom — MidTom — FlrTom — Kick — Crash!",
+        steps: [
+          { d: 'snare', h: 'L', sub: 0.6 }, { d: 'snare', h: 'R', sub: 0.5 },
+          { d: 'hightom', h: 'L', sub: 0.5 }, { d: 'midtom', h: 'R', sub: 0.5 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'kick', h: 'KICK', sub: 0.5 },
+          { d: 'crash', h: 'L', sub: 0.7 }
+        ]
+      },
+      {
+        id: "fill_gospel_linear_chop",
+        category: "CROSS-KIT FILL",
+        name: "28. Gospel Linear Chop (R - L - R - L - K - K)",
+        stickingText: "4 Hand Notes Across Toms + Double Kick Pedal Punctuation",
+        steps: [
+          { d: 'midtom', h: 'R', sub: 0.42 }, { d: 'hightom', h: 'L', sub: 0.42 },
+          { d: 'floortom', h: 'R', sub: 0.42 }, { d: 'snare', h: 'L', sub: 0.42 },
+          { d: 'kick', h: 'KICK', sub: 0.42 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'crash', h: 'L', sub: 0.55 }, { d: 'ride', h: 'R', sub: 0.55 }
+        ]
+      },
+      {
+        id: "fill_crossover_reach",
+        category: "CROSS-KIT FILL",
+        name: "29. Cross-Body Lateral Reach Trainer",
+        stickingText: "Alternating Far-Left (HiHat/Crash) & Far-Right (FlrTom/Ride)",
+        steps: [
+          { d: 'hihat', h: 'L', sub: 0.5 }, { d: 'floortom', h: 'R', sub: 0.5 },
+          { d: 'crash', h: 'L', sub: 0.5 }, { d: 'ride', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'midtom', h: 'R', sub: 0.5 },
+          { d: 'hightom', h: 'L', sub: 0.5 }, { d: 'kick', h: 'KICK', sub: 0.5 }
+        ]
+      },
+      {
+        id: "fill_tribal_floor_drive",
+        category: "CROSS-KIT FILL",
+        name: "30. Tribal Floor Tom & Rack Tom Dialog",
+        stickingText: "Heavy R Floor Tom Pulse + Syncopated L High Tom Accents",
+        steps: [
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'hightom', h: 'L', sub: 0.5 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'kick', h: 'KICK', sub: 0.5 },
+          { d: 'midtom', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.5 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'openhat', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "fill_cymbal_bell_matrix",
+        category: "CROSS-KIT FILL",
+        name: "31. Cymbal Dynamics & Choke Control Matrix",
+        stickingText: "Open Hat -> Closed Hat Choke -> Ride Bell -> Crash Hit",
+        steps: [
+          { d: 'openhat', h: 'L', sub: 0.55 }, { d: 'hihat', h: 'L', sub: 0.55 },
+          { d: 'ride', h: 'R', sub: 0.55 }, { d: 'snare', h: 'L', sub: 0.55 },
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'crash', h: 'R', sub: 0.6 }
+        ]
+      },
+      {
+        id: "fill_rlkk_quads",
+        category: "CROSS-KIT FILL",
+        name: "32. Quad Linear Grouping (R - L - K - K)",
+        stickingText: "Right Tom -> Left Snare -> Double Kick Sub-Bass",
+        steps: [
+          { d: 'hightom', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'floortom', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 }
+        ]
+      },
+      {
+        id: "fill_six_tuplets_snare_tom",
+        category: "CROSS-KIT FILL",
+        name: "33. Six-Note Bucket Fill (R L R L K K)",
+        stickingText: "4 Rapid Stick Strokes + 2 Kick Beats + Crash Landing",
+        steps: [
+          { d: 'snare', h: 'R', sub: 0.4 }, { d: 'hightom', h: 'L', sub: 0.4 },
+          { d: 'midtom', h: 'R', sub: 0.4 }, { d: 'floortom', h: 'L', sub: 0.4 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'kick', h: 'KICK', sub: 0.45 },
+          { d: 'crash', h: 'L', sub: 0.65 }
+        ]
+      },
+      {
+        id: "fill_polyrhythm_3_over_2",
+        category: "CROSS-KIT FILL",
+        name: "34. 3:2 Polyrhythm Limb Independence",
+        stickingText: "Right Ride plays 3 Pulse while Left Snare/Kick anchors 2",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.5 }, { d: 'ride', h: 'R', sub: 0.5 },
+          { d: 'snare', h: 'L', sub: 0.5 }, { d: 'ride', h: 'R', sub: 0.5 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'hihat', h: 'L', sub: 0.5 }
+        ]
+      },
+      {
+        id: "fill_ghost_to_rimshot",
+        category: "CROSS-KIT FILL",
+        name: "35. Snare Ghost-to-Rimshot Dynamic Builder",
+        stickingText: "Alternating Hi-Hat & Snare Ghost Notes -> Full Backbeat",
+        steps: [
+          { d: 'hihat', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.45 },
+          { d: 'hihat', h: 'R', sub: 0.45 }, { d: 'snare', h: 'L', sub: 0.55 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'midtom', h: 'R', sub: 0.45 },
+          { d: 'floortom', h: 'R', sub: 0.5 }, { d: 'snare', h: 'L', sub: 0.6 }
+        ]
+      },
+      {
+        id: "fill_full_studio_solo",
+        category: "CROSS-KIT FILL",
+        name: "36. Master Studio 8-Piece Finale Solo",
+        stickingText: "Full Kit Showcase across All 8 Acoustic Drums & Cymbals",
+        steps: [
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'hihat', h: 'L', sub: 0.45 },
+          { d: 'snare', h: 'R', sub: 0.45 }, { d: 'openhat', h: 'L', sub: 0.45 },
+          { d: 'hightom', h: 'L', sub: 0.45 }, { d: 'midtom', h: 'R', sub: 0.45 },
+          { d: 'floortom', h: 'R', sub: 0.45 }, { d: 'ride', h: 'R', sub: 0.45 },
+          { d: 'kick', h: 'KICK', sub: 0.45 }, { d: 'crash', h: 'L', sub: 0.65 }
+        ]
+      }
+    ];
+
+    /********************************************************************
+     * 2. STUDIO-GRADE PROCEDURAL WEB AUDIO API ACOUSTIC DRUM SYNTHESIZER
+     * Features:
+     * - Procedural Stereo Studio Room Impulse Response (ConvolverNode)
+     * - Master Bus Glue Compressor (DynamicsCompressorNode)
+     * - Soft Tanh Saturation Curve (WaveShaperNode)
+     * - Open Hi-Hat Active Node Tracking for Authentic Closed-Hat Choke
+     * - Selectable Acoustic Tuning Presets ('maple', 'dry', 'arena')
+     ********************************************************************/
+    class StudioAudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.masterGain = null;
+        this.compressor = null;
+        this.reverbNode = null;
+        this.reverbGain = null;
+        this.dryGain = null;
+        this.saturator = null;
+        this.noiseBuffer = null;
+        this.pinkNoiseBuffer = null;
+        this.activeOpenHatGains = [];
+        this.preset = 'maple'; // 'maple' | 'dry' | 'arena'
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+
+          // Master Bus Compressor
+          this.compressor = this.ctx.createDynamicsCompressor();
+          this.compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
+          this.compressor.knee.setValueAtTime(12, this.ctx.currentTime);
+          this.compressor.ratio.setValueAtTime(4.5, this.ctx.currentTime);
+          this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+          this.compressor.release.setValueAtTime(0.16, this.ctx.currentTime);
+
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = 0.92;
+
+          // Dry & Reverb Send Buses
+          this.dryGain = this.ctx.createGain();
+          this.dryGain.gain.value = 0.88;
+
+          this.reverbGain = this.ctx.createGain();
+          this.reverbGain.gain.value = 0.24;
+
+          this.reverbNode = this.ctx.createConvolver();
+          this.reverbNode.buffer = this._buildRoomImpulseBuffer(1.4, 2.8);
+
+          // Soft Tape Saturation Waveshaper
+          this.saturator = this.ctx.createWaveShaper();
+          this.saturator.curve = this._makeSaturationCurve(1.45);
+          this.saturator.oversample = '2x';
+
+          // Routing: Drums -> Dry/Reverb -> Saturator -> Compressor -> Master -> Destination
+          this.dryGain.connect(this.saturator);
+          this.reverbNode.connect(this.reverbGain);
+          this.reverbGain.connect(this.saturator);
+          this.saturator.connect(this.compressor);
+          this.compressor.connect(this.masterGain);
+          this.masterGain.connect(this.ctx.destination);
+
+          this._createNoiseBuffers();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      setPreset(presetName) {
+        this.init();
+        this.preset = presetName;
+        const now = this.ctx.currentTime;
+        if (presetName === 'dry') {
+          this.reverbGain.gain.setTargetAtTime(0.06, now, 0.04);
+          this.dryGain.gain.setTargetAtTime(0.96, now, 0.04);
+        } else if (presetName === 'arena') {
+          this.reverbGain.gain.setTargetAtTime(0.45, now, 0.04);
+          this.dryGain.gain.setTargetAtTime(0.84, now, 0.04);
+        } else {
+          // 'maple' studio default
+          this.reverbGain.gain.setTargetAtTime(0.24, now, 0.04);
+          this.dryGain.gain.setTargetAtTime(0.88, now, 0.04);
+        }
+      }
+
+      _makeSaturationCurve(amount = 1.4) {
+        const samples = 1024;
+        const curve = new Float32Array(samples);
+        for (let i = 0; i < samples; i++) {
+          const x = (i * 2) / samples - 1;
+          curve[i] = Math.tanh(x * amount);
+        }
+        return curve;
+      }
+
+      _buildRoomImpulseBuffer(duration = 1.35, decay = 2.8) {
+        const rate = this.ctx.sampleRate;
+        const length = Math.floor(rate * duration);
+        const impulse = this.ctx.createBuffer(2, length, rate);
+        for (let ch = 0; ch < 2; ch++) {
+          const data = impulse.getChannelData(ch);
+          for (let i = 0; i < length; i++) {
+            const t = i / length;
+            // Early reflections + smooth exponential acoustic room tail
+            const early = i < rate * 0.025 ? 1.3 : 1.0;
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay) * early;
+          }
+        }
+        return impulse;
+      }
+
+      _createNoiseBuffers() {
+        const bufferSize = this.ctx.sampleRate * 2.0;
+        this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        this.pinkNoiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const white = this.noiseBuffer.getChannelData(0);
+        const pink = this.pinkNoiseBuffer.getChannelData(0);
+
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+          const w = Math.random() * 2 - 1;
+          white[i] = w;
+          b0 = 0.99886 * b0 + w * 0.0555179;
+          b1 = 0.99332 * b1 + w * 0.0750759;
+          b2 = 0.96900 * b2 + w * 0.1538520;
+          b3 = 0.86650 * b3 + w * 0.3104856;
+          b4 = 0.55000 * b4 + w * 0.5329522;
+          b5 = -0.7616 * b5 - w * 0.0168980;
+          pink[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.045;
+          b6 = w * 0.115926;
+        }
+      }
+
+      playDrum(drumType, velocity = 0.92) {
+        this.init();
+        const now = this.ctx.currentTime;
+        const vel = Math.max(0.25, Math.min(1.2, velocity));
+        const pitchScale = this.preset === 'dry' ? 1.07 : (this.preset === 'arena' ? 0.93 : 1.0);
+        const decayScale = this.preset === 'dry' ? 0.75 : (this.preset === 'arena' ? 1.25 : 1.0);
+
+        // Animate HUD 8-Channel VU Meter
+        this._pulseVUMeter(drumType, vel);
+
+        switch (drumType) {
+          case 'kick':
+            this._synthKick(now, vel, pitchScale, decayScale);
+            break;
+          case 'snare':
+            this._synthSnare(now, vel, pitchScale, decayScale);
+            break;
+          case 'hihat':
+            this._chokeOpenHats(now);
+            this._synthHiHat(now, 0.075 * decayScale, vel, false);
+            break;
+          case 'openhat':
+            this._chokeOpenHats(now);
+            this._synthHiHat(now, 0.52 * decayScale, vel, true);
+            break;
+          case 'hightom':
+            this._synthTom(now, 195 * pitchScale, 128 * pitchScale, 0.38 * decayScale, vel);
+            break;
+          case 'midtom':
+            this._synthTom(now, 148 * pitchScale, 96 * pitchScale, 0.46 * decayScale, vel);
+            break;
+          case 'floortom':
+            this._synthTom(now, 105 * pitchScale, 62 * pitchScale, 0.58 * decayScale, vel);
+            break;
+          case 'crash':
+            this._synthCrash(now, vel, decayScale);
+            break;
+          case 'ride':
+            this._synthRide(now, vel, decayScale);
+            break;
+          default:
+            this._synthSnare(now, vel, pitchScale, decayScale);
+        }
+      }
+
+      _pulseVUMeter(drumType, vel) {
+        const bar = document.querySelector(`#vu-meter [data-vu="${drumType}"]`);
+        if (bar) {
+          const pct = Math.min(100, Math.round(45 + vel * 55));
+          bar.style.height = `${pct}%`;
+          setTimeout(() => { bar.style.height = '20%'; }, 150);
+        }
+      }
+
+      _chokeOpenHats(now) {
+        while (this.activeOpenHatGains.length > 0) {
+          const g = this.activeOpenHatGains.pop();
+          try {
+            g.gain.cancelScheduledValues(now);
+            g.gain.setTargetAtTime(0.0001, now, 0.012);
+          } catch (e) {}
+        }
+      }
+
+      // 22" Multi-Stage Pitch-Drop Kick Drum + 1.6kHz Beater Transient Click
+      _synthKick(now, vel, pitchScale, decayScale) {
+        // Sub fundamental sine oscillator (160Hz -> 44Hz -> 30Hz)
+        const subOsc = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        subOsc.type = 'sine';
+        subOsc.frequency.setValueAtTime(160 * pitchScale, now);
+        subOsc.frequency.exponentialRampToValueAtTime(44 * pitchScale, now + 0.055);
+        subOsc.frequency.exponentialRampToValueAtTime(30 * pitchScale, now + 0.36 * decayScale);
+
+        subGain.gain.setValueAtTime(1.25 * vel, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.42 * decayScale);
+
+        // Warm 2nd-harmonic punch body (95Hz -> 48Hz)
+        const bodyOsc = this.ctx.createOscillator();
+        const bodyGain = this.ctx.createGain();
+        bodyOsc.type = 'triangle';
+        bodyOsc.frequency.setValueAtTime(115 * pitchScale, now);
+        bodyOsc.frequency.exponentialRampToValueAtTime(46 * pitchScale, now + 0.09);
+        bodyGain.gain.setValueAtTime(0.45 * vel, now);
+        bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+        // Felt Beater Click Transient (1.6kHz bandpass noise burst)
+        const clickNoise = this.ctx.createBufferSource();
+        clickNoise.buffer = this.noiseBuffer;
+        const clickBP = this.ctx.createBiquadFilter();
+        clickBP.type = 'bandpass';
+        clickBP.frequency.setValueAtTime(1600, now);
+        clickBP.Q.setValueAtTime(2.2, now);
+        const clickGain = this.ctx.createGain();
+        clickGain.gain.setValueAtTime(0.55 * vel, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
+
+        subOsc.connect(subGain);
+        subGain.connect(this.dryGain);
+
+        bodyOsc.connect(bodyGain);
+        bodyGain.connect(this.dryGain);
+        bodyGain.connect(this.reverbNode);
+
+        clickNoise.connect(clickBP);
+        clickBP.connect(clickGain);
+        clickGain.connect(this.dryGain);
+
+        subOsc.start(now);
+        subOsc.stop(now + 0.44 * decayScale);
+        bodyOsc.start(now);
+        bodyOsc.stop(now + 0.16);
+        clickNoise.start(now);
+        clickNoise.stop(now + 0.03);
+      }
+
+      // 14" Dual-Resonant Snare Drum + Crisp 1.3kHz/4.2kHz Snare Wires + Rim Crack
+      _synthSnare(now, vel, pitchScale, decayScale) {
+        // Dual shell modes: Batter (185Hz) & Resonant (330Hz)
+        const modes = [
+          { f: 185 * pitchScale, g: 0.62 * vel, d: 0.16 * decayScale, type: 'triangle' },
+          { f: 330 * pitchScale, g: 0.38 * vel, d: 0.12 * decayScale, type: 'sine' }
+        ];
+        modes.forEach(m => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = m.type;
+          osc.frequency.setValueAtTime(m.f * 1.42, now);
+          osc.frequency.exponentialRampToValueAtTime(m.f, now + 0.032);
+          gain.gain.setValueAtTime(m.g, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + m.d);
+          osc.connect(gain);
+          gain.connect(this.dryGain);
+          gain.connect(this.reverbNode);
+          osc.start(now);
+          osc.stop(now + m.d + 0.02);
+        });
+
+        // Snare Wires Stereo Rattle (Pink + White Noise -> 1.3kHz HPF -> 4.2kHz Presence Peak)
+        const wireNoise = this.ctx.createBufferSource();
+        wireNoise.buffer = this.pinkNoiseBuffer;
+
+        const hpf = this.ctx.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.setValueAtTime(1300, now);
+
+        const presence = this.ctx.createBiquadFilter();
+        presence.type = 'peaking';
+        presence.frequency.setValueAtTime(4200, now);
+        presence.Q.setValueAtTime(1.4, now);
+        presence.gain.setValueAtTime(6.5, now);
+
+        const wireGain = this.ctx.createGain();
+        wireGain.gain.setValueAtTime(0.95 * vel, now);
+        wireGain.gain.exponentialRampToValueAtTime(0.18 * vel, now + 0.06);
+        wireGain.gain.exponentialRampToValueAtTime(0.001, now + 0.26 * decayScale);
+
+        wireNoise.connect(hpf);
+        hpf.connect(presence);
+        presence.connect(wireGain);
+        wireGain.connect(this.dryGain);
+        wireGain.connect(this.reverbNode);
+
+        wireNoise.start(now);
+        wireNoise.stop(now + 0.28 * decayScale);
+      }
+
+      // 14" 6-Oscillator Non-Harmonic Metallic Hi-Hat (Closed Chick & Open Bark with Choke)
+      _synthHiHat(now, duration, vel, isOpen = false) {
+        const freqs = [245, 368, 504, 672, 835, 1080];
+        const bpFilter = this.ctx.createBiquadFilter();
+        bpFilter.type = 'bandpass';
+        bpFilter.frequency.setValueAtTime(9500, now);
+        bpFilter.Q.setValueAtTime(1.4, now);
+
+        const hpFilter = this.ctx.createBiquadFilter();
+        hpFilter.type = 'highpass';
+        hpFilter.frequency.setValueAtTime(7500, now);
+
+        const hatGain = this.ctx.createGain();
+        hatGain.gain.setValueAtTime(0.48 * vel, now);
+        hatGain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+        if (isOpen) {
+          this.activeOpenHatGains.push(hatGain);
+        }
+
+        freqs.forEach(f => {
+          const osc = this.ctx.createOscillator();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(f * 3.1, now);
+          osc.connect(bpFilter);
+          osc.start(now);
+          osc.stop(now + duration + 0.02);
+        });
+
+        // Metallic sizzle air layer
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+        noise.connect(bpFilter);
+        noise.start(now);
+        noise.stop(now + duration);
+
+        bpFilter.connect(hpFilter);
+        hpFilter.connect(hatGain);
+        hatGain.connect(this.dryGain);
+        if (isOpen) {
+          hatGain.connect(this.reverbNode);
+        }
+      }
+
+      // Acoustic Rack & Floor Toms (10" High, 12" Mid, 16" Floor)
+      _synthTom(now, startFreq, endFreq, duration, vel) {
+        // Primary Drumhead Fundamental
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(startFreq, now);
+        osc1.frequency.exponentialRampToValueAtTime(endFreq, now + 0.085);
+        osc1.frequency.exponentialRampToValueAtTime(endFreq * 0.92, now + duration);
+
+        gain1.gain.setValueAtTime(0.95 * vel, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        // Resonant Bottom Head Overtone (1.52x ratio)
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(startFreq * 1.52, now);
+        osc2.frequency.exponentialRampToValueAtTime(endFreq * 1.48, now + 0.06);
+        gain2.gain.setValueAtTime(0.28 * vel, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.55);
+
+        // Stick Batter Attack Click
+        const click = this.ctx.createBufferSource();
+        click.buffer = this.pinkNoiseBuffer;
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(startFreq * 5.5, now);
+        const cGain = this.ctx.createGain();
+        cGain.gain.setValueAtTime(0.32 * vel, now);
+        cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.028);
+
+        osc1.connect(gain1);
+        gain1.connect(this.dryGain);
+        gain1.connect(this.reverbNode);
+
+        osc2.connect(gain2);
+        gain2.connect(this.dryGain);
+        gain2.connect(this.reverbNode);
+
+        click.connect(bp);
+        bp.connect(cGain);
+        cGain.connect(this.dryGain);
+
+        osc1.start(now);
+        osc1.stop(now + duration + 0.02);
+        osc2.start(now);
+        osc2.stop(now + duration * 0.6);
+        click.start(now);
+        click.stop(now + 0.032);
+      }
+
+      // 18" Shimmering B20 Bronze Crash Cymbal (1.8s splash decay)
+      _synthCrash(now, vel, decayScale) {
+        const dur = 1.75 * decayScale;
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.pinkNoiseBuffer;
+
+        const bpLow = this.ctx.createBiquadFilter();
+        bpLow.type = 'bandpass';
+        bpLow.frequency.setValueAtTime(3600, now);
+        bpLow.Q.setValueAtTime(0.75, now);
+
+        const bpHigh = this.ctx.createBiquadFilter();
+        bpHigh.type = 'peaking';
+        bpHigh.frequency.setValueAtTime(7200, now);
+        bpHigh.gain.setValueAtTime(8, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.82 * vel, now);
+        gain.gain.exponentialRampToValueAtTime(0.24 * vel, now + 0.25);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+
+        // Shimmering metallic partials
+        [415, 587, 784, 1108, 1568, 2093].forEach(freq => {
+          const osc = this.ctx.createOscillator();
+          const oGain = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(freq * 1.95, now);
+          oGain.gain.setValueAtTime(0.048 * vel, now);
+          oGain.gain.exponentialRampToValueAtTime(0.0004, now + dur * 0.55);
+          osc.connect(oGain);
+          oGain.connect(bpLow);
+          osc.start(now);
+          osc.stop(now + dur * 0.6);
+        });
+
+        noise.connect(bpLow);
+        bpLow.connect(bpHigh);
+        bpHigh.connect(gain);
+        gain.connect(this.dryGain);
+        gain.connect(this.reverbNode);
+
+        noise.start(now);
+        noise.stop(now + dur + 0.05);
+      }
+
+      // 20" Crystalline Ride Cymbal Bow & Bell Ping (1.45kHz & 2.9kHz)
+      _synthRide(now, vel, decayScale) {
+        const dur = 1.05 * decayScale;
+        const bellPartials = [587, 932, 1450, 2180, 2900];
+        bellPartials.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime((0.22 * vel) / (idx * 0.7 + 1), now);
+          gain.gain.exponentialRampToValueAtTime(0.0006, now + dur);
+          osc.connect(gain);
+          gain.connect(this.dryGain);
+          gain.connect(this.reverbNode);
+          osc.start(now);
+          osc.stop(now + dur + 0.02);
+        });
+        // Add subtle stick tip cymbal wash
+        this._synthHiHat(now, 0.34 * decayScale, vel * 0.65, false);
+      }
+
+      // Wrong Drum Misfire Buzz
+      playWrongBuzz() {
+        this.init();
+        const now = this.ctx.currentTime;
+        [128, 137].forEach(freq => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, now);
+          osc.frequency.linearRampToValueAtTime(freq * 0.76, now + 0.24);
+          gain.gain.setValueAtTime(0.24, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+          osc.connect(gain);
+          gain.connect(this.dryGain);
+          osc.start(now);
+          osc.stop(now + 0.28);
+        });
+      }
+
+      // Floor Drop Missed Note Sub-Bass Thud (-30 pts)
+      playFloorThud() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(84, now);
+        osc.frequency.exponentialRampToValueAtTime(22, now + 0.36);
+        gain.gain.setValueAtTime(0.95, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+        osc.connect(gain);
+        gain.connect(this.dryGain);
+        osc.start(now);
+        osc.stop(now + 0.44);
+      }
+
+      // Final 8-Second Drill Metronome Warning Click
+      playWarningTick(isUrgent = false) {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(isUrgent ? 1567.98 : 1046.5, now);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+        osc.connect(gain);
+        gain.connect(this.dryGain);
+        osc.start(now);
+        osc.stop(now + 0.06);
+      }
+
+      // Victory Studio Drum Fill & Major-9 Chord Chime
+      playVictoryFanfare() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const fill = [
+          { t: 0.0, d: 'snare' },
+          { t: 0.065, d: 'hightom' },
+          { t: 0.13, d: 'midtom' },
+          { t: 0.195, d: 'floortom' },
+          { t: 0.27, d: 'kick' },
+          { t: 0.27, d: 'crash' }
+        ];
+        fill.forEach(s => setTimeout(() => this.playDrum(s.d, 1.0), s.t * 1000));
+
+        [293.66, 440.0, 587.33, 739.99, 880.0].forEach(freq => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + 0.28);
+          gain.gain.setValueAtTime(0.12, now + 0.28);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 1.75);
+          osc.connect(gain);
+          gain.connect(this.dryGain);
+          osc.start(now + 0.28);
+          osc.stop(now + 1.8);
+        });
+      }
+    }
+
+    const audio = new StudioAudioEngine();
+
+    /********************************************************************
+     * 3. THREE.JS 3D STUDIO ENVIRONMENT, 8-PIECE KIT & SPATIAL HIGHWAY
+     ********************************************************************/
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090B10);
+    scene.fog = new THREE.FogExp2(0x090B10, 0.042);
+
+    const camera = new THREE.PerspectiveCamera(56, window.innerWidth / window.innerHeight, 0.08, 100);
+    // Ergonomic First-Person Drummer Throne Perspective
+    const defaultCameraPos = new THREE.Vector3(0, 2.38, 2.45);
+    const defaultLookAt = new THREE.Vector3(0, 1.32, -0.55);
+    camera.position.copy(defaultCameraPos);
+    camera.lookAt(defaultLookAt);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.xr.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    // Studio Lighting
+    scene.add(new THREE.AmbientLight(0x3B455E, 0.92));
+
+    const keySpot = new THREE.SpotLight(0xFFFBEB, 1.85);
+    keySpot.position.set(0, 8.0, 3.2);
+    keySpot.angle = Math.PI / 2.8;
+    keySpot.penumbra = 0.5;
+    keySpot.castShadow = true;
+    keySpot.shadow.mapSize.width = 1024;
+    keySpot.shadow.mapSize.height = 1024;
+    scene.add(keySpot);
+
+    const cyanRimLight = new THREE.PointLight(0x06B6D4, 1.8, 12);
+    cyanRimLight.position.set(-3.8, 3.2, -0.8);
+    scene.add(cyanRimLight);
+
+    const amberRimLight = new THREE.PointLight(0xF59E0B, 1.8, 12);
+    amberRimLight.position.set(3.8, 3.2, -0.8);
+    scene.add(amberRimLight);
+
+    // Studio Stage & Riser
+    const studioGroup = new THREE.Group();
+    scene.add(studioGroup);
+
+    const floorMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(34, 34),
+      new THREE.MeshStandardMaterial({ color: 0x0B0E17, roughness: 0.35, metalness: 0.28 })
+    );
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    studioGroup.add(floorMesh);
+
+    const gridHelper = new THREE.GridHelper(26, 26, 0x1E293B, 0x111726);
+    gridHelper.position.y = 0.01;
+    studioGroup.add(gridHelper);
+
+    const riserMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.9, 3.1, 0.16, 48),
+      new THREE.MeshStandardMaterial({ color: 0x151A26, roughness: 0.4, metalness: 0.45 })
+    );
+    riserMesh.position.set(0, 0.08, -0.45);
+    riserMesh.receiveShadow = true;
+    studioGroup.add(riserMesh);
+
+    const riserRing = new THREE.Mesh(
+      new THREE.TorusGeometry(3.02, 0.025, 16, 64),
+      new THREE.MeshBasicMaterial({ color: 0xF59E0B })
+    );
+    riserRing.rotation.x = Math.PI / 2;
+    riserRing.position.set(0, 0.15, -0.45);
+    studioGroup.add(riserRing);
+
+    /********************************************************************
+     * 4. ERGONOMIC 3D 8-PIECE DRUM KIT + SPATIAL TARGET COLUMNS
+     * Each drum piece has an exact 3D strike target position (`strikePos`),
+     * strike radius for Quest 3 physical stick collision, and a vertical
+     * spatial rhythm guide column so falling notes land directly on the drum!
+     ********************************************************************/
+    const drumKitGroup = new THREE.Group();
+    scene.add(drumKitGroup);
+
+    const interactiveDrumMeshes = [];
+    const drumPieces = {};
+
+    // Spatial coordinates for each drumhead strike zone in world coordinates
+    const DRUM_CONFIG = {
+      crash:    { label: '18" CRASH',     shortKey: 'E',     pos: new THREE.Vector3(-1.18, 1.52, -0.78), color: 0xFACC15, radius: 0.44, defaultHand: 'L' },
+      openhat:  { label: 'OPEN HAT',      shortKey: 'S',     pos: new THREE.Vector3(-1.32, 1.12, -0.10), color: 0x2DD4BF, radius: 0.34, defaultHand: 'L' },
+      hihat:    { label: 'CLOSED HAT',    shortKey: 'D / K', pos: new THREE.Vector3(-1.10, 1.06,  0.14), color: 0x10B981, radius: 0.34, defaultHand: 'L' },
+      snare:    { label: '14" SNARE',     shortKey: 'F / J', pos: new THREE.Vector3(-0.52, 0.92,  0.08), color: 0x06B6D4, radius: 0.36, defaultHand: 'L' },
+      hightom:  { label: '10" HI TOM',    shortKey: 'R',     pos: new THREE.Vector3(-0.34, 1.24, -0.58), color: 0xA855F7, radius: 0.28, defaultHand: 'L' },
+      kick:     { label: '22" KICK',      shortKey: 'SPACE', pos: new THREE.Vector3( 0.00, 0.62, -0.42), color: 0xEC4899, radius: 0.48, defaultHand: 'KICK' },
+      midtom:   { label: '12" MID TOM',   shortKey: 'U',     pos: new THREE.Vector3( 0.36, 1.24, -0.58), color: 0x6366F1, radius: 0.30, defaultHand: 'R' },
+      floortom: { label: '16" FLOOR TOM', shortKey: 'L',     pos: new THREE.Vector3( 0.82, 0.86,  0.02), color: 0xF43F5E, radius: 0.38, defaultHand: 'R' },
+      ride:     { label: '20" RIDE',      shortKey: 'I',     pos: new THREE.Vector3( 1.22, 1.44, -0.64), color: 0xFB923C, radius: 0.48, defaultHand: 'R' }
+    };
+
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0x991B1B, roughness: 0.22, metalness: 0.38 });
+    const snareShellMat = new THREE.MeshStandardMaterial({ color: 0xE2E8F0, roughness: 0.16, metalness: 0.88 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xCBD5E1, roughness: 0.15, metalness: 0.92 });
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.5, metalness: 0.06 });
+    const cymbalMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, roughness: 0.2, metalness: 0.88, side: THREE.DoubleSide });
+
+    // Create 3D Keycap Floating Label Pill on each drum
+    function createDrumLabelSprite(title, keyHint, hexColor) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 96;
+      const ctx = c.getContext('2d');
+
+      const hexStr = '#' + hexColor.toString(16).padStart(6, '0');
+      ctx.fillStyle = 'rgba(11, 15, 25, 0.88)';
+      ctx.fillRect(6, 6, 244, 84);
+      ctx.strokeStyle = hexStr;
+      ctx.lineWidth = 5;
+      ctx.strokeRect(6, 6, 244, 84);
+
+      ctx.fillStyle = hexStr;
+      ctx.font = '800 26px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`[${keyHint}]`, 128, 40);
+
+      ctx.fillStyle = '#F8FAFC';
+      ctx.font = '700 22px "Space Grotesk", sans-serif';
+      ctx.fillText(title, 128, 72);
+
+      const tex = new THREE.CanvasTexture(c);
+      const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.set(0.56, 0.21, 1);
+      return sprite;
+    }
+
+    function buildDrumMesh(drumId) {
+      const cfg = DRUM_CONFIG[drumId];
+      const group = new THREE.Group();
+      group.position.copy(cfg.pos);
+      drumKitGroup.add(group);
+
+      let headMesh = null;
+
+      if (drumId === 'kick') {
+        const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.44, 36), shellMat);
+        shell.rotation.x = Math.PI / 2;
+        shell.castShadow = true;
+        shell.userData = { drumId };
+        group.add(shell);
+
+        const front = new THREE.Mesh(new THREE.CircleGeometry(0.45, 36), new THREE.MeshStandardMaterial({ color: 0x0F172A, roughness: 0.4 }));
+        front.position.z = 0.225;
+        front.userData = { drumId };
+        group.add(front);
+        headMesh = front;
+        interactiveDrumMeshes.push(shell, front);
+      } else if (drumId === 'crash' || drumId === 'ride' || drumId === 'hihat' || drumId === 'openhat') {
+        const cymRadius = drumId === 'ride' ? 0.46 : (drumId === 'crash' ? 0.41 : 0.30);
+        const cym = new THREE.Mesh(new THREE.ConeGeometry(cymRadius, 0.048, 32, 1, true), cymbalMat.clone());
+        cym.userData = { drumId };
+        group.add(cym);
+
+        const bell = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), cymbalMat);
+        bell.scale.y = 0.45;
+        bell.position.y = 0.02;
+        group.add(bell);
+
+        // Chrome Stand Pole to Riser Floor
+        const poleHeight = cfg.pos.y - 0.14;
+        const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.022, poleHeight, 10), chromeMat);
+        stand.position.y = -poleHeight / 2;
+        group.add(stand);
+
+        headMesh = cym;
+        interactiveDrumMeshes.push(cym);
+      } else {
+        // Snare, High Tom, Mid Tom, Floor Tom
+        const radius = drumId === 'floortom' ? 0.34 : (drumId === 'snare' ? 0.31 : (drumId === 'midtom' ? 0.26 : 0.23));
+        const depth = drumId === 'floortom' ? 0.40 : 0.21;
+        const mat = drumId === 'snare' ? snareShellMat : shellMat;
+
+        const shell = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, depth, 32), mat);
+        shell.position.y = -depth / 2;
+        shell.castShadow = true;
+        shell.userData = { drumId };
+        group.add(shell);
+
+        const topHead = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.98, radius * 0.98, 0.02, 32), headMat.clone());
+        topHead.userData = { drumId };
+        group.add(topHead);
+
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.01, 0.016, 10, 32), chromeMat);
+        hoop.rotation.x = Math.PI / 2;
+        group.add(hoop);
+
+        // Stand Pole
+        const poleHeight = cfg.pos.y - depth - 0.12;
+        if (poleHeight > 0.1) {
+          const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, poleHeight, 10), chromeMat);
+          stand.position.y = -depth - poleHeight / 2;
+          group.add(stand);
+        }
+
+        headMesh = topHead;
+        interactiveDrumMeshes.push(shell, topHead);
+      }
+
+      // Glowing Spatial Target Ring directly on the Drumhead / Cymbal Strike Surface
+      const targetRingGeo = new THREE.RingGeometry(cfg.radius * 0.72, cfg.radius * 0.90, 32);
+      const targetRingMat = new THREE.MeshBasicMaterial({
+        color: cfg.color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.65
+      });
+      const targetRing = new THREE.Mesh(targetRingGeo, targetRingMat);
+      targetRing.rotation.x = -Math.PI / 2;
+      targetRing.position.set(cfg.pos.x, cfg.pos.y + 0.03, cfg.pos.z);
+      scene.add(targetRing);
+
+      // Vertical Spatial Rhythm Highway Guide Beam above this Drum Piece
+      const colHeight = 2.85;
+      const colGeo = new THREE.CylinderGeometry(0.018, 0.018, colHeight, 12);
+      const colMat = new THREE.MeshBasicMaterial({
+        color: cfg.color,
+        transparent: true,
+        opacity: 0.22
+      });
+      const guideColumn = new THREE.Mesh(colGeo, colMat);
+      guideColumn.position.set(cfg.pos.x, cfg.pos.y + colHeight / 2 + 0.03, cfg.pos.z);
+      scene.add(guideColumn);
+
+      // Floating Keycap / Drum Name Badge
+      const labelSprite = createDrumLabelSprite(cfg.label, cfg.shortKey, cfg.color);
+      labelSprite.position.set(cfg.pos.x, cfg.pos.y - 0.23, cfg.pos.z + 0.24);
+      scene.add(labelSprite);
+
+      drumPieces[drumId] = {
+        id: drumId,
+        cfg,
+        group,
+        head: headMesh,
+        targetRing,
+        guideColumn,
+        pulse: 0,
+        tilt: 0,
+        lastVRHitTime: 0
+      };
+    }
+
+    Object.keys(DRUM_CONFIG).forEach(buildDrumMesh);
+
+    // 3D Animated Hickory Drumsticks (Left = Cyan Tip, Right = Amber Tip)
+    const drumsticks = [];
+    function create3DDrumstick(colorHex, offsetX, handLabel) {
+      const stickGroup = new THREE.Group();
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.011, 0.017, 0.56, 12),
+        new THREE.MeshStandardMaterial({ color: 0xD97706, roughness: 0.32 })
+      );
+      shaft.rotation.x = Math.PI / 2;
+      stickGroup.add(shaft);
+
+      const tip = new THREE.Mesh(
+        new THREE.SphereGeometry(0.024, 12, 12),
+        new THREE.MeshBasicMaterial({ color: colorHex })
+      );
+      tip.position.z = -0.29;
+      stickGroup.add(tip);
+
+      const homePos = new THREE.Vector3(offsetX, 1.36, 0.62);
+      stickGroup.position.copy(homePos);
+      scene.add(stickGroup);
+
+      return {
+        hand: handLabel,
+        group: stickGroup,
+        tip,
+        homePos,
+        targetPos: homePos.clone(),
+        strikeLerp: 0
+      };
+    }
+    const leftStick3D = create3DDrumstick(0x06B6D4, -0.42, 'L');
+    const rightStick3D = create3DDrumstick(0xF59E0B, 0.42, 'R');
+    drumsticks.push(leftStick3D, rightStick3D);
+
+    /********************************************************************
+     * 5. 3D PARTICLE, SPARK, SMOKE & LASER STREAM FX ENGINE
+     ********************************************************************/
+    const activeParticles = [];
+    const activeRipples = [];
+    const activeBeams = [];
+
+    function spawnSparkBurst(originPos, colorHex = 0xF59E0B) {
+      for (let i = 0; i < 34; i++) {
+        const geo = new THREE.OctahedronGeometry(0.036 + Math.random() * 0.032, 0);
+        const col = i % 3 === 0 ? colorHex : (i % 3 === 1 ? 0x38BDF8 : 0xFDE047);
+        const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 1 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(originPos);
+
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        const speed = 1.8 + Math.random() * 3.6;
+        const velocity = new THREE.Vector3(
+          Math.sin(phi) * Math.cos(theta) * speed,
+          Math.abs(Math.cos(phi) * speed) + 1.2,
+          Math.sin(phi) * Math.sin(theta) * speed
+        );
+
+        scene.add(mesh);
+        activeParticles.push({
+          mesh,
+          velocity,
+          gravity: -7.2,
+          drag: 0.95,
+          life: 1.0,
+          decay: 1.6 + Math.random() * 0.6,
+          scaleRate: 0.95
+        });
+      }
+    }
+
+    function spawnBlackSmoke(originPos) {
+      for (let i = 0; i < 20; i++) {
+        const geo = new THREE.DodecahedronGeometry(0.075 + Math.random() * 0.07, 0);
+        const mat = new THREE.MeshStandardMaterial({
+          color: i % 2 === 0 ? 0x1E293B : 0x0F172A,
+          roughness: 0.9,
+          transparent: true,
+          opacity: 0.85
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(originPos);
+
+        const velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 1.3,
+          0.8 + Math.random() * 1.4,
+          (Math.random() - 0.5) * 1.3
+        );
+
+        scene.add(mesh);
+        activeParticles.push({
+          mesh,
+          velocity,
+          gravity: 0.35,
+          drag: 0.94,
+          life: 1.0,
+          decay: 1.25 + Math.random() * 0.4,
+          scaleRate: 1.028
+        });
+      }
+    }
+
+    function spawnStrikeStream(startPos, targetPos, colorHex = 0xF59E0B) {
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([startPos.clone(), targetPos.clone()]);
+      const lineMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.92 });
+      const line = new THREE.Line(lineGeo, lineMat);
+      scene.add(line);
+      activeBeams.push({ mesh: line, life: 1.0 });
+
+      for (let i = 0; i < 12; i++) {
+        const t = i / 12;
+        const pos = new THREE.Vector3().lerpVectors(startPos, targetPos, t);
+        const pMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.025, 6, 6),
+          new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.9 })
+        );
+        pMesh.position.copy(pos);
+        const dir = new THREE.Vector3().subVectors(targetPos, startPos).normalize().multiplyScalar(2.2);
+        scene.add(pMesh);
+        activeParticles.push({
+          mesh: pMesh,
+          velocity: dir,
+          gravity: -1.0,
+          drag: 0.9,
+          life: 1.0,
+          decay: 2.8,
+          scaleRate: 0.92
+        });
+      }
+    }
+
+    function spawnDrumRipple(pos, colorHex = 0xF59E0B, maxScale = 2.3) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.16, 0.24, 32),
+        new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.92 })
+      );
+      ring.position.copy(pos);
+      ring.position.y += 0.035;
+      ring.rotation.x = -Math.PI / 2;
+      scene.add(ring);
+      activeRipples.push({ mesh: ring, life: 1.0, maxScale });
+    }
+
+    /********************************************************************
+     * 6. SPATIAL FALLING MUSCLE-MEMORY NOTE CUES & IN-VR 3D MARQUEE
+     * Notes spawn at the top of the specific drum's vertical guide column
+     * with bold Left ('L'), Right ('R'), or Foot ('KICK') sticking badges.
+     ********************************************************************/
+    const activeNotes = [];
+    const NOTE_SPAWN_HEIGHT_OFFSET = 2.80; // Spawns 2.8m above the target drumhead
+    const HIT_WINDOW_HEIGHT = 0.58;        // Generous spatial strike zone above drumhead
+    const FLOOR_MISS_OFFSET = -0.34;       // Passed below drumhead to the floor (-30 pts)
+
+    function createSpatialNoteTexture(hand, drumLabel) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 144;
+      const ctx = c.getContext('2d');
+
+      const bgHex = hand === 'L' ? '#06B6D4' : (hand === 'R' ? '#F59E0B' : '#EC4899');
+
+      // Rounded Sticking Pill Card
+      ctx.fillStyle = '#090D16';
+      ctx.fillRect(0, 0, 256, 144);
+      ctx.strokeStyle = bgHex;
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5, 5, 246, 134);
+
+      ctx.fillStyle = bgHex;
+      ctx.fillRect(5, 5, 246, 44);
+
+      ctx.fillStyle = '#020617';
+      ctx.font = '800 26px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      const handTitle = hand === 'L' ? 'LEFT [L]' : (hand === 'R' ? 'RIGHT [R]' : 'FOOT [KICK]');
+      ctx.fillText(handTitle, 128, 35);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '800 30px "Space Grotesk", sans-serif';
+      ctx.fillText(drumLabel, 128, 92);
+
+      const keyHint = DRUM_CONFIG[Object.keys(DRUM_CONFIG).find(k => DRUM_CONFIG[k].label === drumLabel)]?.shortKey || '';
+      ctx.fillStyle = bgHex;
+      ctx.font = '700 22px "JetBrains Mono", monospace';
+      ctx.fillText(`KEY: ${keyHint}`, 128, 124);
+
+      return new THREE.CanvasTexture(c);
+    }
+
+    function spawnSpatialNote(drumId, hand) {
+      const piece = drumPieces[drumId];
+      if (!piece) return;
+
+      const cfg = piece.cfg;
+      const handColor = hand === 'L' ? 0x06B6D4 : (hand === 'R' ? 0xF59E0B : 0xEC4899);
+
+      const noteGroup = new THREE.Group();
+      const startY = cfg.pos.y + NOTE_SPAWN_HEIGHT_OFFSET;
+      noteGroup.position.set(cfg.pos.x, startY, cfg.pos.z);
+
+      // Glowing Horizontal Timing Disc that aligns with the drumhead ring on impact
+      const discGeo = new THREE.TorusGeometry(cfg.radius * 0.78, 0.032, 12, 32);
+      const discMat = new THREE.MeshBasicMaterial({ color: handColor });
+      const discMesh = new THREE.Mesh(discGeo, discMat);
+      discMesh.rotation.x = Math.PI / 2;
+      noteGroup.add(discMesh);
+
+      // Upright Billboard Card showing 'LEFT [L]', 'RIGHT [R]', or 'FOOT [KICK]'
+      const cardTex = createSpatialNoteTexture(hand, cfg.label);
+      const cardGeo = new THREE.BoxGeometry(0.66, 0.37, 0.06);
+      const sideMat = new THREE.MeshBasicMaterial({ color: handColor });
+      const faceMat = new THREE.MeshBasicMaterial({ map: cardTex });
+      const cardMesh = new THREE.Mesh(cardGeo, [sideMat, sideMat, sideMat, sideMat, faceMat, faceMat]);
+      cardMesh.position.y = 0.21;
+      noteGroup.add(cardMesh);
+
+      scene.add(noteGroup);
+
+      // Fall duration scaled between 5.0 and 7.0 seconds at lower BPM or tighter at higher BPM
+      // At 95 BPM, notes take ~5.4 seconds to travel from spawn to floor threshold
+      const bpmRatio = 95 / gameState.bpm;
+      const fallDuration = Math.max(3.6, Math.min(7.0, (5.2 + Math.random() * 1.1) * bpmRatio));
+      const totalDistance = NOTE_SPAWN_HEIGHT_OFFSET - FLOOR_MISS_OFFSET;
+      const fallSpeed = totalDistance / fallDuration;
+
+      const noteObj = {
+        drumId,
+        hand,
+        group: noteGroup,
+        cardMesh,
+        discMesh,
+        targetY: cfg.pos.y + 0.03,
+        floorY: cfg.pos.y + FLOOR_MISS_OFFSET,
+        fallSpeed,
+        spawnTime: performance.now()
+      };
+
+      cardMesh.userData.spatialNote = noteObj;
+      discMesh.userData.spatialNote = noteObj;
+      activeNotes.push(noteObj);
+    }
+
+    // In-VR 3D Floating Studio Marquee above the Kit
+    const vrBoardCanvas = document.createElement('canvas');
+    vrBoardCanvas.width = 1024;
+    vrBoardCanvas.height = 220;
+    const vrBoardCtx = vrBoardCanvas.getContext('2d');
+    const vrBoardTexture = new THREE.CanvasTexture(vrBoardCanvas);
+
+    const vrBoardMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.8, 1.05),
+      new THREE.MeshBasicMaterial({ map: vrBoardTexture, transparent: true })
+    );
+    vrBoardMesh.position.set(0, 3.65, -1.75);
+    scene.add(vrBoardMesh);
+
+    function updateVR3DBoard(titleText, subText) {
+      vrBoardCtx.clearRect(0, 0, 1024, 220);
+      vrBoardCtx.fillStyle = 'rgba(13, 17, 27, 0.92)';
+      vrBoardCtx.fillRect(0, 0, 1024, 220);
+      vrBoardCtx.strokeStyle = '#F59E0B';
+      vrBoardCtx.lineWidth = 8;
+      vrBoardCtx.strokeRect(4, 4, 1016, 212);
+
+      vrBoardCtx.fillStyle = '#F59E0B';
+      vrBoardCtx.font = '800 28px "JetBrains Mono", monospace';
+      vrBoardCtx.textAlign = 'left';
+      vrBoardCtx.fillText(`PRO DRUM STUDIO XR • ${gameState.mode}`, 28, 48);
+
+      vrBoardCtx.fillStyle = '#38BDF8';
+      vrBoardCtx.textAlign = 'right';
+      vrBoardCtx.fillText(`SCORE: ${gameState.score}  |  STREAK: ${gameState.combo}  |  TIME: ${gameState.timeRemaining.toFixed(1)}s`, 996, 48);
+
+      vrBoardCtx.fillStyle = '#FFFFFF';
+      vrBoardCtx.font = '800 34px "Space Grotesk", sans-serif';
+      vrBoardCtx.textAlign = 'center';
+      vrBoardCtx.fillText(titleText, 512, 118);
+
+      vrBoardCtx.fillStyle = '#94A3B8';
+      vrBoardCtx.font = '600 24px "JetBrains Mono", monospace';
+      vrBoardCtx.fillText(subText, 512, 172);
+
+      vrBoardTexture.needsUpdate = true;
+    }
+
+    /********************************************************************
+     * 7. MUSCLE-MEMORY GAME STATE, SCORING & PATTERN SEQUENCER
+     * - +50 points for hitting the correct drum on time
+     * - -10 points for hitting the wrong drum / misfire
+     * - -30 points if a target note reaches the floor unhit
+     * - 30-second drill with warning ticks in final 8 seconds
+     ********************************************************************/
+    const GAME_DURATION = 30.0;
+
+    const gameState = {
+      mode: 'DRILL_30', // 'DRILL_30' | 'LOOP_TRAINER' | 'FREE_PLAY'
+      status: 'IDLE',   // 'IDLE' | 'PLAYING' | 'PAUSED' | 'ENDED'
+      patternIndex: 0,
+      stepIndex: 0,
+      bpm: 95,
+      stepTimer: 0,
+      beatCounter: 0,
+      beatAccum: 0,
+      score: 0,
+      combo: 0,
+      maxCombo: 0,
+      timeRemaining: GAME_DURATION,
+      lastTickSecond: 9,
+      correctCount: 0,
+      wrongCount: 0,
+      floorMissCount: 0,
+      timingOffsetsMs: [],
+      limbHits: { L: 0, R: 0, KICK: 0 }
+    };
+
+    // DOM Elements
+    const elScore = document.getElementById('hud-score');
+    const elCombo = document.getElementById('hud-combo');
+    const elAccuracy = document.getElementById('hud-accuracy');
+    const elTiming = document.getElementById('hud-timing');
+    const elTimer = document.getElementById('hud-timer');
+    const elTimerLabel = document.getElementById('timer-label');
+    const elTimerBox = document.getElementById('timer-box');
+    const elTimerDot = document.getElementById('timer-warn-dot');
+    const elTimerProgress = document.getElementById('timer-progress');
+    const elStatusBadge = document.getElementById('status-badge');
+    const elPatternSelect = document.getElementById('pattern-select');
+    const elPatternCat = document.getElementById('pattern-category-tag');
+    const elPatternSticking = document.getElementById('pattern-sticking-preview');
+    const elNextStrikePill = document.getElementById('next-strike-pill');
+    const elBpmSlider = document.getElementById('bpm-slider');
+    const elBpmDisplay = document.getElementById('bpm-display');
+    const elKitPreset = document.getElementById('kit-preset-select');
+    const elEndModal = document.getElementById('end-modal');
+    const elBtnStart = document.getElementById('btn-start');
+    const elBtnStartLabel = document.getElementById('btn-start-label');
+    const elBtnPause = document.getElementById('btn-pause');
+    const elBtnPauseLabel = document.getElementById('btn-pause-label');
+    const elBtnReset = document.getElementById('btn-reset');
+    const elBtnVR = document.getElementById('btn-vr');
+    const elBtnVRLabel = document.getElementById('btn-vr-label');
+
+    // Populate the 36 Muscle-Memory Patterns Dropdown
+    function initPatternDropdown() {
+      elPatternSelect.innerHTML = '';
+      MUSCLE_PATTERNS.forEach((pat, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = pat.name;
+        opt.className = 'bg-slate-900 text-white';
+        elPatternSelect.appendChild(opt);
+      });
+      selectPattern(0);
+    }
+
+    function selectPattern(idx) {
+      gameState.patternIndex = idx;
+      gameState.stepIndex = 0;
+      elPatternSelect.value = idx;
+      const pat = MUSCLE_PATTERNS[idx];
+      elPatternCat.textContent = pat.category;
+      elPatternSticking.textContent = pat.stickingText;
+      updateVR3DBoard(pat.name, pat.stickingText);
+    }
+
+    function clearActiveNotes() {
+      while (activeNotes.length > 0) {
+        const n = activeNotes.pop();
+        scene.remove(n.group);
+      }
+    }
+
+    function showFloatingFeedback(worldPos, text, colorClass) {
+      const projected = worldPos.clone().project(camera);
+      const x = (projected.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-(projected.y * 0.5) + 0.5) * window.innerHeight;
+
+      const badge = document.createElement('div');
+      badge.className = `floating-feedback font-mono font-extrabold text-xs sm:text-sm px-3 py-1 rounded-full border shadow-lg ${colorClass}`;
+      badge.style.left = `${Math.min(Math.max(x, 80), window.innerWidth - 80)}px`;
+      badge.style.top = `${Math.min(Math.max(y, 70), window.innerHeight - 70)}px`;
+      badge.textContent = text;
+
+      document.getElementById('feedback-layer').appendChild(badge);
+      setTimeout(() => badge.remove(), 950);
+    }
+
+    function updateHUD() {
+      elScore.textContent = gameState.score;
+      elCombo.textContent = `${gameState.combo}🔥`;
+
+      const total = gameState.correctCount + gameState.wrongCount + gameState.floorMissCount;
+      const acc = total > 0 ? Math.round((gameState.correctCount / total) * 100) : 100;
+      elAccuracy.textContent = `(${acc}%)`;
+
+      if (gameState.mode === 'DRILL_30') {
+        elTimerLabel.textContent = '30S DRILL';
+        elTimer.textContent = `${Math.max(0, gameState.timeRemaining).toFixed(1)}s`;
+        const pct = Math.max(0, (gameState.timeRemaining / GAME_DURATION) * 100);
+        elTimerProgress.style.width = `${pct}%`;
+
+        if (gameState.timeRemaining <= 8.0 && gameState.status === 'PLAYING') {
+          elTimer.classList.replace('text-cyan-400', 'text-red-400');
+          elTimerBox.classList.add('urgent-pulse', 'bg-red-500/15');
+          elTimerDot.classList.remove('hidden');
+        } else {
+          elTimer.classList.replace('text-red-400', 'text-cyan-400');
+          elTimerBox.classList.remove('urgent-pulse', 'bg-red-500/15');
+          elTimerDot.classList.add('hidden');
+        }
+      } else {
+        elTimerLabel.textContent = gameState.mode === 'LOOP_TRAINER' ? 'LOOP MODE' : 'FREE JAM';
+        elTimer.textContent = '∞';
+        elTimerProgress.style.width = '100%';
+        elTimerBox.classList.remove('urgent-pulse', 'bg-red-500/15');
+        elTimerDot.classList.add('hidden');
+      }
+
+      // Update upcoming note hint pill
+      if (activeNotes.length > 0) {
+        let lowestNote = activeNotes[0];
+        for (let i = 1; i < activeNotes.length; i++) {
+          if (activeNotes[i].group.position.y < lowestNote.group.position.y) {
+            lowestNote = activeNotes[i];
+          }
+        }
+        const cfg = DRUM_CONFIG[lowestNote.drumId];
+        elNextStrikePill.textContent = `NEXT STRIKE: [${lowestNote.hand}] ${cfg.label} (KEY: ${cfg.shortKey})`;
+      }
+    }
+
+    /********************************************************************
+     * 8. TRIGGER DRUM STRIKE & EVALUATE MUSCLE-MEMORY TIMING / SCORING
+     ********************************************************************/
+    function triggerDrumStrike(drumId, handUsed = null, velocity = 0.95, customOrigin = null) {
+      const piece = drumPieces[drumId];
+      if (!piece) return;
+
+      const resolvedHand = handUsed || piece.cfg.defaultHand;
+
+      // Always play the rich procedural acoustic drum sound immediately!
+      audio.playDrum(drumId, velocity);
+
+      // Animate 2D bottom dock pad button
+      const padButtons = document.querySelectorAll(`.drum-pad-btn[data-drum="${drumId}"]`);
+      padButtons.forEach(btn => {
+        const bHand = btn.getAttribute('data-hand');
+        if (!handUsed || bHand === handUsed || padButtons.length === 1) {
+          const cls = `active-hit-${resolvedHand}`;
+          btn.classList.add(cls);
+          setTimeout(() => btn.classList.remove(cls), 130);
+        }
+      });
+
+      // Animate 3D drumhead compression & cymbal oscillation
+      piece.pulse = 1.0;
+      piece.tilt = 1.0;
+      const drumWorldPos = piece.cfg.pos.clone();
+      spawnDrumRipple(drumWorldPos, piece.cfg.color, 2.2);
+
+      // Swing matching Left or Right 3D Hickory Drumstick
+      if (resolvedHand !== 'KICK') {
+        const stick = resolvedHand === 'L' ? leftStick3D : rightStick3D;
+        stick.targetPos.copy(drumWorldPos).add(new THREE.Vector3(0, 0.14, 0.18));
+        stick.strikeLerp = 1.0;
+      }
+
+      // If in IDLE or FREE_PLAY mode, no scoring penalty—let the drummer jam freely!
+      if (gameState.status !== 'PLAYING' || gameState.mode === 'FREE_PLAY') {
+        return;
+      }
+
+      // Evaluate against active falling spatial notes
+      // Find the lowest note currently descending on this drum column (or within the strike zone)
+      let candidateIdx = -1;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < activeNotes.length; i++) {
+        const n = activeNotes[i];
+        if (n.drumId === drumId) {
+          const dist = Math.abs(n.group.position.y - n.targetY);
+          if (dist < bestDist) {
+            bestDist = dist;
+            candidateIdx = i;
+          }
+        }
+      }
+
+      const streamOrigin = customOrigin || (resolvedHand === 'L' ? leftStick3D.homePos : rightStick3D.homePos);
+
+      if (candidateIdx !== -1 && bestDist <= HIT_WINDOW_HEIGHT * 1.45) {
+        // CORRECT DRUM HIT! (+50 Points)
+        const hitNote = activeNotes[candidateIdx];
+        const hitPos = hitNote.group.position.clone();
+
+        // Calculate timing offset in milliseconds from ideal target ring center
+        const offsetMs = Math.round(((hitNote.group.position.y - hitNote.targetY) / hitNote.fallSpeed) * 1000);
+        const absMs = Math.abs(offsetMs);
+        gameState.timingOffsetsMs.push(absMs);
+        elTiming.textContent = `${offsetMs >= 0 ? '-' : '+'}${absMs} ms`;
+
+        gameState.score += 50;
+        gameState.combo += 1;
+        if (gameState.combo > gameState.maxCombo) gameState.maxCombo = gameState.combo;
+        gameState.correctCount += 1;
+        gameState.limbHits[resolvedHand] = (gameState.limbHits[resolvedHand] || 0) + 1;
+
+        spawnStrikeStream(streamOrigin, hitPos, piece.cfg.color);
+        spawnSparkBurst(hitPos, piece.cfg.color);
+
+        const timingLabel = absMs <= 35 ? 'PERFECT POCKET' : 'GOOD GROOVE';
+        showFloatingFeedback(
+          hitPos,
+          `+50 ${timingLabel} [${resolvedHand}]`,
+          'bg-emerald-500/95 text-slate-950 border-emerald-300'
+        );
+
+        scene.remove(hitNote.group);
+        activeNotes.splice(candidateIdx, 1);
+      } else if (activeNotes.length > 0) {
+        // WRONG DRUM OR EARLY/LATE MISFIRE (-10 Points)
+        gameState.score -= 10;
+        gameState.combo = 0;
+        gameState.wrongCount += 1;
+
+        audio.playWrongBuzz();
+        spawnBlackSmoke(drumWorldPos);
+
+        showFloatingFeedback(
+          drumWorldPos,
+          `-10 WRONG PAD / TIMING`,
+          'bg-rose-600/95 text-white border-rose-300'
+        );
+      }
+
+      updateHUD();
+    }
+
+    function handleNoteFloorDrop(noteIndex) {
+      const note = activeNotes[noteIndex];
+      if (!note) return;
+
+      const impactPos = new THREE.Vector3(note.group.position.x, 0.20, note.group.position.z);
+      scene.remove(note.group);
+      activeNotes.splice(noteIndex, 1);
+
+      if (gameState.status === 'PLAYING' && gameState.mode !== 'FREE_PLAY') {
+        gameState.score -= 30;
+        gameState.combo = 0;
+        gameState.floorMissCount += 1;
+
+        audio.playFloorThud();
+        spawnDrumRipple(impactPos, 0xEF4444, 2.8);
+        spawnBlackSmoke(impactPos);
+
+        showFloatingFeedback(
+          impactPos,
+          `-30 MISSED ${DRUM_CONFIG[note.drumId].label}!`,
+          'bg-red-600/95 text-white border-red-300'
+        );
+        updateHUD();
+      }
+    }
+
+    /********************************************************************
+     * 9. SESSION LIFECYCLE CONTROLS (START, PAUSE, RESET, MODE, END)
+     ********************************************************************/
+    function startGame() {
+      audio.init();
+      elEndModal.classList.add('hidden');
+      clearActiveNotes();
+
+      gameState.status = 'PLAYING';
+      gameState.score = 0;
+      gameState.combo = 0;
+      gameState.maxCombo = 0;
+      gameState.timeRemaining = GAME_DURATION;
+      gameState.lastTickSecond = 9;
+      gameState.correctCount = 0;
+      gameState.wrongCount = 0;
+      gameState.floorMissCount = 0;
+      gameState.timingOffsetsMs = [];
+      gameState.limbHits = { L: 0, R: 0, KICK: 0 };
+      gameState.stepIndex = 0;
+      gameState.stepTimer = 0.05; // Spawn first note immediately
+
+      elStatusBadge.textContent = gameState.mode === 'DRILL_30' ? 'LIVE 30S DRILL' : (gameState.mode === 'LOOP_TRAINER' ? 'LOOP TRAINER' : 'FREE JAM');
+      elStatusBadge.className = 'text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+      elBtnStartLabel.textContent = 'Restart Session';
+      elBtnPause.disabled = false;
+      elBtnPauseLabel.textContent = 'Pause';
+
+      // Audition downbeat Kick
+      audio.playDrum('kick', 0.9);
+      updateHUD();
+    }
+
+    function togglePauseGame() {
+      if (gameState.status === 'PLAYING') {
+        gameState.status = 'PAUSED';
+        elStatusBadge.textContent = 'PAUSED';
+        elBtnPauseLabel.textContent = 'Resume';
+      } else if (gameState.status === 'PAUSED') {
+        gameState.status = 'PLAYING';
+        elStatusBadge.textContent = 'LIVE SESSION';
+        elBtnPauseLabel.textContent = 'Pause';
+      }
+    }
+
+    function resetGame() {
+      clearActiveNotes();
+      elEndModal.classList.add('hidden');
+      gameState.status = 'IDLE';
+      gameState.score = 0;
+      gameState.combo = 0;
+      gameState.maxCombo = 0;
+      gameState.timeRemaining = GAME_DURATION;
+      gameState.lastTickSecond = 9;
+      gameState.correctCount = 0;
+      gameState.wrongCount = 0;
+      gameState.floorMissCount = 0;
+      gameState.timingOffsetsMs = [];
+
+      elStatusBadge.textContent = 'READY';
+      elStatusBadge.className = 'text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
+      elBtnStartLabel.textContent = gameState.mode === 'DRILL_30' ? 'Start 30s Drill' : 'Start Trainer';
+      elBtnPause.disabled = true;
+      elBtnPauseLabel.textContent = 'Pause';
+
+      updateHUD();
+      const pat = MUSCLE_PATTERNS[gameState.patternIndex];
+      updateVR3DBoard(pat.name, pat.stickingText);
+    }
+
+    function endGame() {
+      gameState.status = 'ENDED';
+      clearActiveNotes();
+      elBtnPause.disabled = true;
+
+      elStatusBadge.textContent = 'TAKE COMPLETE';
+      elStatusBadge.className = 'text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+
+      audio.playVictoryFanfare();
+
+      const totalAttempts = gameState.correctCount + gameState.wrongCount + gameState.floorMissCount;
+      const accuracy = totalAttempts > 0 ? Math.round((gameState.correctCount / totalAttempts) * 100) : 100;
+      const avgMs = gameState.timingOffsetsMs.length > 0
+        ? Math.round(gameState.timingOffsetsMs.reduce((a, b) => a + b, 0) / gameState.timingOffsetsMs.length)
+        : 0;
+      const elapsed = Math.min(GAME_DURATION, GAME_DURATION - gameState.timeRemaining).toFixed(1);
+
+      let rank = 'GARAGE RHYTHM ROOKIE';
+      if (gameState.score >= 650) rank = 'GRAMMY STUDIO VIRTUOSO 🏆';
+      else if (gameState.score >= 400) rank = 'FIRST-CALL SESSION MASTER ⭐';
+      else if (gameState.score >= 200) rank = 'TIGHT POCKET DRUMMER 🥁';
+
+      document.getElementById('end-score').textContent = gameState.score;
+      document.getElementById('end-rank').textContent = `RANK: ${rank}`;
+      document.getElementById('end-accuracy').textContent = `${accuracy}%`;
+      document.getElementById('end-timing').textContent = `±${avgMs} ms`;
+      document.getElementById('end-streak').textContent = `${gameState.maxCombo} 🔥`;
+      document.getElementById('end-breakdown').textContent = `${gameState.correctCount}H / ${gameState.wrongCount}W / ${gameState.floorMissCount}D`;
+      document.getElementById('end-limbs').textContent = `${gameState.limbHits.L}L • ${gameState.limbHits.R}R • ${gameState.limbHits.KICK}K`;
+      document.getElementById('end-time').textContent = `${elapsed}s`;
+
+      elEndModal.classList.remove('hidden');
+      updateVR3DBoard(`TAKE COMPLETE! Score: ${gameState.score} (${rank})`, `Accuracy: ${accuracy}% | Streak: ${gameState.maxCombo}`);
+    }
+
+    function setGameMode(newMode) {
+      gameState.mode = newMode;
+      document.querySelectorAll('.mode-tab-btn').forEach(btn => {
+        if (btn.getAttribute('data-mode') === newMode) {
+          btn.className = 'mode-tab-btn px-2.5 py-1 rounded-md bg-amber-500 text-slate-950 font-bold';
+        } else {
+          btn.className = 'mode-tab-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white';
+        }
+      });
+      resetGame();
+      if (newMode === 'LOOP_TRAINER' || newMode === 'FREE_PLAY') {
+        startGame();
+      }
+    }
+
+    /********************************************************************
+     * 10. CROSS-PLATFORM INPUT: BILATERAL TWO-HANDED KEYBOARD,
+     *     3D MOUSE/TOUCH RAYCASTING & META QUEST 3 PHYSICAL STICK SWINGS
+     ********************************************************************/
+    const raycaster = new THREE.Raycaster();
+    const pointerNDC = new THREE.Vector2();
+    let isDraggingOrbit = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let cameraYaw = 0;
+    let cameraPitch = 0;
+
+    function handleScreenPointer(clientX, clientY) {
+      audio.init();
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointerNDC, camera);
+
+      // 1. Check if player clicked directly on a falling 3D note card/ring
+      if (activeNotes.length > 0) {
+        const noteMeshes = [];
+        activeNotes.forEach(n => {
+          noteMeshes.push(n.cardMesh, n.discMesh);
+        });
+        const noteHits = raycaster.intersectObjects(noteMeshes, false);
+        if (noteHits.length > 0) {
+          const hitNote = noteHits[0].object.userData.spatialNote;
+          if (hitNote) {
+            triggerDrumStrike(hitNote.drumId, hitNote.hand, 0.95);
+            return true;
+          }
+        }
+      }
+
+      // 2. Check if player clicked on any 3D drumhead or cymbal
+      const drumHits = raycaster.intersectObjects(interactiveDrumMeshes, false);
+      if (drumHits.length > 0) {
+        const drumId = drumHits[0].object.userData.drumId;
+        if (drumId) {
+          triggerDrumStrike(drumId, null, 0.95);
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const hit = handleScreenPointer(e.clientX, e.clientY);
+      if (!hit) {
+        isDraggingOrbit = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingOrbit || renderer.xr.isPresenting) return;
+      const dx = (e.clientX - dragStartX) * 0.003;
+      const dy = (e.clientY - dragStartY) * 0.002;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      cameraYaw = Math.max(-0.5, Math.min(0.5, cameraYaw - dx));
+      cameraPitch = Math.max(-0.22, Math.min(0.32, cameraPitch + dy));
+
+      camera.position.x = defaultCameraPos.x + Math.sin(cameraYaw) * 1.9;
+      camera.position.y = defaultCameraPos.y + cameraPitch * 1.1;
+      camera.lookAt(defaultLookAt);
+    });
+
+    window.addEventListener('mouseup', () => { isDraggingOrbit = false; });
+
+    // Multi-Touch Support on 3D Canvas
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        handleScreenPointer(t.clientX, t.clientY);
+      }
+    }, { passive: true });
+
+    // Bilateral Two-Handed Desktop Keyboard Mapping
+    const KEY_TO_DRUM_MAP = {
+      // Left Hand Anatomical Keys
+      'e': { drum: 'crash',    hand: 'L' },
+      's': { drum: 'openhat',  hand: 'L' },
+      'd': { drum: 'hihat',    hand: 'L' },
+      'f': { drum: 'snare',    hand: 'L' },
+      'r': { drum: 'hightom',  hand: 'L' },
+      // Foot Pedal Key
+      ' ': { drum: 'kick',     hand: 'KICK' },
+      // Right Hand Anatomical Keys
+      'j': { drum: 'snare',    hand: 'R' },
+      'k': { drum: 'hihat',    hand: 'R' },
+      'u': { drum: 'midtom',   hand: 'R' },
+      'l': { drum: 'floortom', hand: 'R' },
+      'i': { drum: 'ride',     hand: 'R' },
+      // Number Row Quick Triggers (1-9)
+      '1': { drum: 'kick',     hand: 'KICK' },
+      '2': { drum: 'snare',    hand: 'L' },
+      '3': { drum: 'hihat',    hand: 'L' },
+      '4': { drum: 'openhat',  hand: 'L' },
+      '5': { drum: 'hightom',  hand: 'L' },
+      '6': { drum: 'midtom',   hand: 'R' },
+      '7': { drum: 'floortom', hand: 'R' },
+      '8': { drum: 'crash',    hand: 'L' },
+      '9': { drum: 'ride',     hand: 'R' }
+    };
+
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      const key = e.key.toLowerCase();
+      if (key === ' ') e.preventDefault();
+
+      const mapped = KEY_TO_DRUM_MAP[key];
+      if (mapped) {
+        triggerDrumStrike(mapped.drum, mapped.hand, 0.96);
+      }
+    });
+
+    // Bottom Dock Multi-Touch & Mouse Drum Pad Buttons
+    document.querySelectorAll('.drum-pad-btn').forEach(btn => {
+      const triggerPad = (e) => {
+        e.preventDefault();
+        const drumId = btn.getAttribute('data-drum');
+        const hand = btn.getAttribute('data-hand');
+        triggerDrumStrike(drumId, hand, 0.96);
+      };
+      btn.addEventListener('mousedown', triggerPad);
+      btn.addEventListener('touchstart', triggerPad, { passive: false });
+    });
+
+    // UI Control Listeners
+    elBtnStart.addEventListener('click', startGame);
+    elBtnPause.addEventListener('click', togglePauseGame);
+    elBtnReset.addEventListener('click', resetGame);
+
+    elPatternSelect.addEventListener('change', (e) => {
+      selectPattern(parseInt(e.target.value, 10));
+      if (gameState.status === 'PLAYING') {
+        clearActiveNotes();
+      }
+    });
+
+    document.getElementById('btn-next-pattern').addEventListener('click', () => {
+      const nextIdx = (gameState.patternIndex + 1) % MUSCLE_PATTERNS.length;
+      selectPattern(nextIdx);
+      if (gameState.status === 'PLAYING') {
+        clearActiveNotes();
+      }
+    });
+
+    elBpmSlider.addEventListener('input', (e) => {
+      gameState.bpm = parseInt(e.target.value, 10);
+      elBpmDisplay.textContent = `${gameState.bpm} BPM`;
+    });
+
+    elKitPreset.addEventListener('change', (e) => {
+      audio.setPreset(e.target.value);
+      // Audition snare + kick on preset switch
+      audio.playDrum('kick', 0.9);
+      setTimeout(() => audio.playDrum('snare', 0.9), 130);
+    });
+
+    document.querySelectorAll('.mode-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => setGameMode(btn.getAttribute('data-mode')));
+    });
+
+    document.getElementById('btn-play-again').addEventListener('click', () => {
+      setGameMode('DRILL_30');
+      startGame();
+    });
+    document.getElementById('btn-loop-practice').addEventListener('click', () => {
+      elEndModal.classList.add('hidden');
+      setGameMode('LOOP_TRAINER');
+    });
+    document.getElementById('btn-free-play').addEventListener('click', () => {
+      elEndModal.classList.add('hidden');
+      setGameMode('FREE_PLAY');
+    });
+
+    /********************************************************************
+     * 11. META QUEST 3 WEBXR PHYSICAL DRUMSTICK COLLISION & CONTROLLERS
+     * Supports BOTH:
+     * 1) Physical 3D Drumstick Swing Collision into any drumhead sphere
+     *    with dynamic swing-speed velocity & Quest 3 controller haptics!
+     * 2) Controller Trigger Raycasting on notes or drums.
+     ********************************************************************/
+    let xrSession = null;
+    const xrControllers = [];
+    const tempMatrix = new THREE.Matrix4();
+
+    function setupXRControllers() {
+      for (let i = 0; i < 2; i++) {
+        const controller = renderer.xr.getController(i);
+        const handLabel = i === 0 ? 'L' : 'R';
+        const tipColor = i === 0 ? 0x06B6D4 : 0xF59E0B;
+        scene.add(controller);
+
+        // Attach Physical 3D Hickory Drumstick + Tip Collider to Quest 3 Controller
+        const vrStickGroup = new THREE.Group();
+        const shaft = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.01, 0.015, 0.46, 12),
+          new THREE.MeshStandardMaterial({ color: 0xD97706, roughness: 0.35 })
+        );
+        shaft.rotation.x = Math.PI / 2;
+        shaft.position.z = -0.22;
+        vrStickGroup.add(shaft);
+
+        const tip = new THREE.Mesh(
+          new THREE.SphereGeometry(0.024, 12, 12),
+          new THREE.MeshBasicMaterial({ color: tipColor })
+        );
+        tip.position.z = -0.45;
+        vrStickGroup.add(tip);
+
+        // Subtle laser guide line
+        const laserGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, -0.45),
+          new THREE.Vector3(0, 0, -3.5)
+        ]);
+        const laserLine = new THREE.Line(
+          laserGeo,
+          new THREE.LineBasicMaterial({ color: tipColor, transparent: true, opacity: 0.45 })
+        );
+        vrStickGroup.add(laserLine);
+
+        controller.add(vrStickGroup);
+
+        const ctrlData = {
+          controller,
+          tipMesh: tip,
+          hand: handLabel,
+          prevTipPos: new THREE.Vector3(),
+          initialized: false
+        };
+
+        controller.addEventListener('selectstart', () => {
+          handleXRTriggerPress(ctrlData);
+        });
+
+        xrControllers.push(ctrlData);
+      }
+    }
+    setupXRControllers();
+
+    function pulseVRHaptics(controller, intensity = 0.85, durationMs = 40) {
+      try {
+        const session = renderer.xr.getSession();
+        if (!session) return;
+        for (const source of session.inputSources) {
+          if (source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+            source.gamepad.hapticActuators[0].pulse(intensity, durationMs);
+          }
+        }
+      } catch (e) {}
+    }
+
+    function updateVRPhysicalStickCollisions(dt) {
+      if (!renderer.xr.isPresenting) return;
+      const nowMs = performance.now();
+
+      xrControllers.forEach(ctrl => {
+        const tipWorldPos = new THREE.Vector3();
+        ctrl.tipMesh.getWorldPosition(tipWorldPos);
+
+        if (!ctrl.initialized) {
+          ctrl.prevTipPos.copy(tipWorldPos);
+          ctrl.initialized = true;
+          return;
+        }
+
+        const dy = tipWorldPos.y - ctrl.prevTipPos.y;
+        const speed = tipWorldPos.distanceTo(ctrl.prevTipPos) / Math.max(0.001, dt);
+        ctrl.prevTipPos.copy(tipWorldPos);
+
+        // Require a downward or forward swing motion to prevent resting triggers
+        if (dy < -0.004 || speed > 0.85) {
+          Object.keys(drumPieces).forEach(drumId => {
+            const piece = drumPieces[drumId];
+            if (nowMs - piece.lastVRHitTime < 115) return; // Debounce per drumhead
+
+            const dist = tipWorldPos.distanceTo(piece.cfg.pos);
+            if (dist <= piece.cfg.radius * 0.92) {
+              piece.lastVRHitTime = nowMs;
+              const dynamicVel = Math.min(1.15, Math.max(0.45, speed * 0.42));
+              triggerDrumStrike(drumId, ctrl.hand, dynamicVel, tipWorldPos);
+              pulseVRHaptics(ctrl.controller, Math.min(1.0, dynamicVel), 45);
+            }
+          });
+        }
+      });
+    }
+
+    function handleXRTriggerPress(ctrlData) {
+      audio.init();
+      const controller = ctrlData.controller;
+      tempMatrix.identity().extractRotation(controller.matrixWorld);
+      raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+      const originPos = raycaster.ray.origin.clone();
+
+      // Clicking the VR Scoreboard starts/restarts the drill
+      if (gameState.status === 'IDLE' || gameState.status === 'ENDED') {
+        const boardHit = raycaster.intersectObject(vrBoardMesh, false);
+        if (boardHit.length > 0) {
+          startGame();
+          return;
+        }
+      }
+
+      // Check falling spatial notes
+      if (activeNotes.length > 0) {
+        const noteMeshes = [];
+        activeNotes.forEach(n => noteMeshes.push(n.cardMesh, n.discMesh));
+        const noteHits = raycaster.intersectObjects(noteMeshes, false);
+        if (noteHits.length > 0) {
+          const hitNote = noteHits[0].object.userData.spatialNote;
+          if (hitNote) {
+            triggerDrumStrike(hitNote.drumId, ctrlData.hand, 0.98, originPos);
+            pulseVRHaptics(controller, 0.8, 35);
+            return;
+          }
+        }
+      }
+
+      // Check 3D drums
+      const drumHits = raycaster.intersectObjects(interactiveDrumMeshes, false);
+      if (drumHits.length > 0) {
+        const drumId = drumHits[0].object.userData.drumId;
+        if (drumId) {
+          triggerDrumStrike(drumId, ctrlData.hand, 0.95, originPos);
+          pulseVRHaptics(controller, 0.75, 35);
+        }
+      }
+    }
+
+    async function toggleVRMode() {
+      if (xrSession) {
+        await xrSession.end();
+        return;
+      }
+      if (!navigator.xr) {
+        showFloatingFeedback(
+          new THREE.Vector3(0, 1.8, 0),
+          'WebXR Not Detected — Playing in 3D Desktop/Mobile Muscle-Memory Mode',
+          'bg-cyan-600/95 text-white border-cyan-300'
+        );
+        return;
+      }
+      try {
+        const supported = await navigator.xr.isSessionSupported('immersive-vr');
+        if (!supported) {
+          showFloatingFeedback(
+            new THREE.Vector3(0, 1.8, 0),
+            'Immersive VR Not Supported on This Device — 3D Studio Mode Active',
+            'bg-amber-500/95 text-slate-950 border-amber-200'
+          );
+          return;
+        }
+        const session = await navigator.xr.requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+        });
+        xrSession = session;
+        renderer.xr.setSession(session);
+        elBtnVRLabel.textContent = 'Exit VR';
+
+        session.addEventListener('end', () => {
+          xrSession = null;
+          elBtnVRLabel.textContent = 'Enter VR';
+        });
+      } catch (err) {
+        showFloatingFeedback(
+          new THREE.Vector3(0, 1.8, 0),
+          'VR Headset Restricted in Preview Frame — 3D Studio Active',
+          'bg-amber-500/95 text-slate-950 border-amber-200'
+        );
+      }
+    }
+    elBtnVR.addEventListener('click', toggleVRMode);
+
+    /********************************************************************
+     * 12. MAIN ANIMATION, SEQUENCER & PHYSICS LOOP
+     ********************************************************************/
+    const clock = new THREE.Clock();
+
+    function pulseBeatLED(beatIdx) {
+      for (let i = 0; i < 4; i++) {
+        const led = document.getElementById(`beat-led-${i}`);
+        if (!led) continue;
+        if (i === beatIdx) {
+          led.className = i === 0
+            ? 'w-2.5 h-2.5 rounded-full bg-amber-400 shadow shadow-amber-400 transition-all'
+            : 'w-2 h-2 rounded-full bg-cyan-400 shadow shadow-cyan-400 transition-all';
+        } else {
+          led.className = 'w-2 h-2 rounded-full bg-slate-700 transition-all';
+        }
+      }
+    }
+
+    function updateScene(dt) {
+      // 1. Check Physical Quest 3 Stick Swings
+      updateVRPhysicalStickCollisions(dt);
+
+      // 2. Update Sequencer, 30s Drill Timer & Falling Spatial Muscle-Memory Notes
+      if (gameState.status === 'PLAYING') {
+        const beatDurationSec = 60.0 / gameState.bpm;
+
+        // Visual 4/4 Metronome LED Bar
+        gameState.beatAccum += dt;
+        if (gameState.beatAccum >= beatDurationSec) {
+          gameState.beatAccum -= beatDurationSec;
+          gameState.beatCounter = (gameState.beatCounter + 1) % 4;
+          pulseBeatLED(gameState.beatCounter);
+        }
+
+        // 30-Second Drill Countdown & Final 8s Warning Ticks
+        if (gameState.mode === 'DRILL_30') {
+          gameState.timeRemaining -= dt;
+          const ceilSec = Math.ceil(gameState.timeRemaining);
+          if (ceilSec <= 8 && ceilSec >= 1 && ceilSec < gameState.lastTickSecond) {
+            gameState.lastTickSecond = ceilSec;
+            audio.playWarningTick(ceilSec <= 3);
+          }
+
+          if (gameState.timeRemaining <= 0) {
+            gameState.timeRemaining = 0;
+            updateHUD();
+            endGame();
+            return;
+          }
+        }
+
+        // Spawn Pattern Notes along the 8 Spatial Drum Columns
+        if (gameState.mode !== 'FREE_PLAY') {
+          gameState.stepTimer -= dt;
+          if (gameState.stepTimer <= 0) {
+            const pattern = MUSCLE_PATTERNS[gameState.patternIndex];
+            const step = pattern.steps[gameState.stepIndex];
+            spawnSpatialNote(step.d, step.h);
+
+            // Advance to next step in the muscle-memory pattern
+            gameState.stepIndex = (gameState.stepIndex + 1) % pattern.steps.length;
+            // In 30s Drill mode, automatically progress through patterns after completing 2 full cycles
+            gameState.stepTimer = Math.max(0.32, step.sub * beatDurationSec * 1.35);
+          }
+        }
+
+        // Update Descending Spatial Notes
+        for (let i = activeNotes.length - 1; i >= 0; i--) {
+          const n = activeNotes[i];
+          n.group.position.y -= n.fallSpeed * dt;
+
+          // Highlight target ring on drumhead when note enters the ideal strike zone
+          const distToHead = Math.abs(n.group.position.y - n.targetY);
+          const piece = drumPieces[n.drumId];
+          if (piece && distToHead < HIT_WINDOW_HEIGHT) {
+            const scale = 1.0 + Math.sin(performance.now() * 0.02) * 0.12;
+            piece.targetRing.scale.set(scale, scale, 1);
+          }
+
+          // Check if Note Missed and Hit the Floor (-30 pts)
+          if (n.group.position.y <= n.floorY) {
+            handleNoteFloorDrop(i);
+          }
+        }
+
+        updateHUD();
+      }
+
+      // 3. Animate 3D Drum Kit Pieces (Batter Head Recoil & Cymbal Shimmer)
+      Object.keys(drumPieces).forEach(key => {
+        const p = drumPieces[key];
+        if (p.pulse > 0.001) {
+          p.pulse = Math.max(0, p.pulse - dt * 6.0);
+          if (key === 'kick') {
+            const s = 1 + Math.sin(p.pulse * Math.PI) * 0.08;
+            p.group.scale.set(s, s, 1 + Math.sin(p.pulse * Math.PI) * 0.10);
+          } else if (p.head) {
+            p.head.scale.setScalar(1 + Math.sin(p.pulse * Math.PI) * 0.07);
+          }
+        }
+        if (p.tilt > 0.001) {
+          p.tilt = Math.max(0, p.tilt - dt * 2.0);
+          if (key === 'crash' || key === 'ride' || key === 'openhat') {
+            p.group.rotation.x = Math.sin(p.tilt * 24) * 0.20 * p.tilt;
+          } else if (key === 'hihat') {
+            p.head.position.y = -Math.sin(p.tilt * Math.PI) * 0.02;
+          }
+        }
+      });
+
+      // 4. Animate Desktop/Mobile 3D Hickory Drumsticks
+      drumsticks.forEach((s, idx) => {
+        if (s.strikeLerp > 0) {
+          s.strikeLerp = Math.max(0, s.strikeLerp - dt * 7.5);
+          const wave = Math.sin(s.strikeLerp * Math.PI);
+          s.group.position.lerpVectors(s.homePos, s.targetPos, wave);
+          s.group.rotation.x = -wave * 0.62;
+        } else {
+          const t = performance.now() * 0.003 + idx * Math.PI;
+          s.group.position.y = s.homePos.y + Math.sin(t) * 0.025;
+          s.group.rotation.x = Math.sin(t) * 0.04;
+        }
+      });
+
+      // 5. Update Sparks, Smoke & Stream Particles
+      for (let i = activeParticles.length - 1; i >= 0; i--) {
+        const p = activeParticles[i];
+        p.life -= p.decay * dt;
+        if (p.life <= 0) {
+          scene.remove(p.mesh);
+          if (p.mesh.geometry) p.mesh.geometry.dispose();
+          activeParticles.splice(i, 1);
+          continue;
+        }
+        p.velocity.y += p.gravity * dt;
+        p.velocity.multiplyScalar(p.drag);
+        p.mesh.position.addScaledVector(p.velocity, dt);
+        p.mesh.scale.multiplyScalar(p.scaleRate);
+        if (p.mesh.material) p.mesh.material.opacity = Math.max(0, p.life);
+      }
+
+      // 6. Update Drumhead Shockwave Ripples
+      for (let i = activeRipples.length - 1; i >= 0; i--) {
+        const r = activeRipples[i];
+        r.life -= dt * 2.4;
+        if (r.life <= 0) {
+          scene.remove(r.mesh);
+          r.mesh.geometry.dispose();
+          activeRipples.splice(i, 1);
+          continue;
+        }
+        const scale = 1 + (1 - r.life) * r.maxScale;
+        r.mesh.scale.set(scale, scale, 1);
+        r.mesh.material.opacity = r.life;
+      }
+
+      // 7. Update Laser Strike Beams
+      for (let i = activeBeams.length - 1; i >= 0; i--) {
+        const b = activeBeams[i];
+        b.life -= dt * 5.5;
+        if (b.life <= 0) {
+          scene.remove(b.mesh);
+          b.mesh.geometry.dispose();
+          activeBeams.splice(i, 1);
+          continue;
+        }
+        b.mesh.material.opacity = b.life;
+      }
+    }
+
+    // Window Resize Handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Initialize & Start Render Loop
+    window.onload = function () {
+      initPatternDropdown();
+      renderer.setAnimationLoop(() => {
+        const dt = Math.min(clock.getDelta(), 0.1);
+        updateScene(dt);
+        renderer.render(scene, camera);
+      });
+    };
+  </script>
+</body>
+</html>
